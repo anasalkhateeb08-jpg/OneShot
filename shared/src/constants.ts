@@ -1,0 +1,128 @@
+/**
+ * Game constants shared literally by client and server.
+ * Source: master prompt Appendix B and add-on Appendix D.
+ * All values are first guesses, to be tuned by playtesting.
+ * Must not import Three.js, Colyseus, DOM, or Node APIs.
+ */
+
+export const SIM = { physicsHz: 60, serverTickHz: 30, bulletSubstepHz: 240 } as const;
+
+export const BALLISTICS = {
+  gravity: 9.81,
+  muzzleSpeed: 850,
+  dragK: 0.0004,
+  maxFlightSeconds: 3,
+} as const;
+
+export const WIND = { maxSpeed: 8, minPeriodS: 20, maxPeriodS: 60 } as const;
+
+export const RIFLE = {
+  boltCycleS: 1.8,
+  magazine: 5,
+  reloadS: 3.5,
+  zeroing: [100, 200, 300, 400],
+} as const;
+
+export const PLAYER = {
+  eyeHeight: { stand: 1.7, crouch: 1.0, prone: 0.4 },
+  speed: { stand: 3.5, crouch: 1.8, prone: 0.8 },
+  swayMultiplier: { stand: 1.0, crouch: 0.6, prone: 0.3 },
+  breathHoldSwayFactor: 0.15,
+  breathHoldFovFactor: 0.85,
+  lungDrainPerS: 0.125,
+  lungRecoverPerS: 0.25,
+  forcedExhaleSwayS: 2.5,
+  forcedExhaleSwayFactor: 3,
+  limbWoundSwayFactor: 1.5,
+  limbWoundSeconds: 10,
+} as const;
+
+export const NET = {
+  interpDelayMs: 100,
+  maxRewindMs: 300,
+  historyFrames: 16,
+  reconnectS: 15,
+} as const;
+
+export const KILLCAM = { minDistanceM: 100, timeScale: 0.15, durationS: 3 } as const;
+
+export const MATCH = {
+  timerPresets: [180, 300, 600],
+  countdownS: 5,
+  suddenDeathBeforeEndS: 30,
+  suddenDeathHardCapAfterZeroS: 120,
+  pulseIntervalS: 8,
+  pulseSectorStartDeg: 60,
+  pulseSectorShrinkDeg: 10,
+  pulseSectorMinDeg: 20,
+} as const;
+
+export const EXPOSURE = {
+  scopeGlintAfterS: 4,
+  shotCueDurationS: 4,
+  shotCueSectorDeg: 30,
+  campRadiusM: 5,
+  campSeconds: 45,
+} as const;
+
+export const TRIALS = {
+  startFree: 5,
+  freeCap: 20,
+  windowHours: 24,
+  adMaxPerWindow: 5,
+  packSize: 45,
+  packValidityDays: 30,
+  packPriceUsd: 3,
+} as const;
+
+export const ABUSE = {
+  minMatchSecondsForReward: 60,
+  minShotsPerPlayerForReward: 1,
+  samePairMaxPerDay: 3,
+  queueFallbackToPracticeS: 90,
+} as const;
+
+export const TOUCH = {
+  minTargetPx: 48,
+  fireButtonPx: 88,
+  secondaryButtonPx: 64,
+  stickDeadZone: 0.1,
+  stickRadiusPx: 64,
+  stickZoneWidthFraction: 0.4,
+  layoutScaleMin: 0.7,
+  layoutScaleMax: 1.4,
+  mobilePixelRatioCapStart: 0.75,
+  mobileDevicePixelRatioMax: 2,
+  mobileTargetFps: 30,
+  mobileTextureBudgetMb: 48,
+  tutorialMaxSeconds: 90,
+} as const;
+
+export const VERSIONING = {
+  shellBannerIntervalHours: 24,
+  emailBatchSize: 50,
+  emailBatchIntervalSeconds: 60,
+  emailDryRunDefault: true,
+} as const;
+
+export const LANGUAGES = [
+  "en",
+  "zh-Hans",
+  "hi",
+  "es",
+  "fr",
+  "pt-BR",
+  "ru",
+  "ja",
+  "de",
+  "id",
+  "tr",
+  "ko",
+  "it",
+  "vi",
+  "ar",
+] as const;
+
+export type LanguageCode = (typeof LANGUAGES)[number];
+
+export const TEXT_EXPANSION_BUDGET = 1.35;

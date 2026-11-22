@@ -1,0 +1,14 @@
+{
+  "name": "@oneshot/shared",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Pure code shared by client and server: constants, message types, and (later) ballistics, wind, sway, trials.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run"
+  }
+}

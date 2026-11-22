@@ -1,0 +1,17 @@
+{
+  "name": "@oneshot/server",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Authoritative game server. Phase 0: configuration only; Colyseus arrives in phase 3.",
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@oneshot/shared": "*"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0"
+  }
+}
