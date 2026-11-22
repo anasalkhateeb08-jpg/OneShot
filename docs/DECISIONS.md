@@ -86,3 +86,29 @@ Owner directive: each device must run at the best quality it can sustain. Adapti
 measures frame time during play and moves between presets automatically (up as well as down);
 the player can override in settings. Gameplay (ballistics, wind, sway, timings, visibility of
 cues) is identical on every preset and device.
+
+## D-017 Phase 1 is delivered in five steps; new shared constants and breath.ts (ACTIVE)
+The AI cannot run the 3D client in its own workspace, so phase 1 is split into steps that the
+owner runs and verifies one by one:
+1a shared simulation core (fully unit-tested), 1b world and renderer, 1c player, input, scope,
+breath, rangefinder, HUD, 1d bullets, targets, sound, 1e quality presets, measurements, feel test.
+Added constants not in Appendix B (first guesses, tune by playtesting):
+`BALLISTICS.sightHeightM` 0.05, `SWAY` (base amplitude 3 mrad, breathing 1.2 mrad over 4 s,
+frequencies 0.25 to 0.6 Hz, 0.25 s transitions), `AUDIO.speedOfSoundMps` 343.
+Added `shared/src/breath.ts` (not in the master file list): the lung meter must be computed
+identically by the server (which never trusts the client) and the client, so it lives in shared.
+Integration method: Runge-Kutta 4 at 240 Hz (verified against an independent fine-step solver:
+drop 0.663 m and drift 0.110 m in a 5 m/s crosswind at 300 m).
+
+## D-018 Multiple maps and per-player zones (ACTIVE, owner directive 2026-11-22)
+Maps: desert canyon first (phase 1 and 2), then jungle and city. Each map is a data definition
+(terrain, props, two mirrored player zones, spawn points, lighting and atmosphere preset), so a
+new map adds data and assets, not new game code. From step 1b the code reads the map through this
+definition (`MapLayout`).
+Player zones: each player moves only inside their own zone (sideways and forward/back). The zone
+border is enforced by the shared movement code, so the server applies the same limit (anti-cheat).
+Defaults chosen by the AI, to be tuned: zone 60 m wide and 30 m deep; zone centers at least
+350 m apart (master section 9).
+Map choice in real duels: random per match by the server, so the queues are not split further.
+Jungle and city are built after phase 2 and before the online duel goes public; their exact phase
+is set with the owner when we get there. Each map gets its own performance measurements.

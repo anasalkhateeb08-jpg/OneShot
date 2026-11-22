@@ -2,8 +2,15 @@
 
 ## Owner's custom rules (master section 3)
 
-EMPTY. The owner has not provided custom rules yet.
-When provided, they replace the temporary assumptions below and are implemented literally.
+Partial. Received so far (2026-11-22):
+
+- Several maps, for variety: desert (first), jungle, and a city. More may follow.
+- In every map each player has their OWN position zone. Inside it the player moves sideways
+  (left and right) and also forward and back, but cannot leave it. The two zones are mirrored,
+  so neither side has an advantage.
+
+The rest of the owner's rules are still pending. Until they arrive, the temporary assumptions
+below apply. When provided, the owner's rules replace them and are implemented literally.
 
 ## Temporary assumptions (in use until the owner's rules arrive)
 

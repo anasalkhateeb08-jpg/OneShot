@@ -12,7 +12,25 @@ export const BALLISTICS = {
   muzzleSpeed: 850,
   dragK: 0.0004,
   maxFlightSeconds: 3,
+  /** Height of the scope's line of sight above the bore axis (added in phase 1, D-017). */
+  sightHeightM: 0.05,
 } as const;
+
+/**
+ * Scope sway shape (added in phase 1, D-017). Final sway =
+ * baseAmplitudeRad x posture multiplier x breath scale x wound factor.
+ */
+export const SWAY = {
+  baseAmplitudeRad: 0.003,
+  breathAmplitudeRad: 0.0012,
+  breathCycleS: 4,
+  minFreqHz: 0.25,
+  maxFreqHz: 0.6,
+  transitionS: 0.25,
+} as const;
+
+/** Sound (added in phase 1, D-017). The shot is heard late by distance / speed of sound. */
+export const AUDIO = { speedOfSoundMps: 343 } as const;
 
 export const WIND = { maxSpeed: 8, minPeriodS: 20, maxPeriodS: 60 } as const;
 
