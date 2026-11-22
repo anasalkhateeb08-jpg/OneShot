@@ -6,6 +6,8 @@
 #
 # -Phase is optional: if omitted, the phase from the current STATUS.md is kept.
 # This file is ASCII only on purpose (Windows PowerShell 5.1 reads non-BOM files as ANSI).
+# Note: PowerShell variable names are case-insensitive, so never reuse a parameter name
+# ($Status, $Decision, $Next, $Phase) for another variable.
 
 param(
   [Parameter(Mandatory = $true)][string]$Status,
@@ -34,13 +36,13 @@ if ($Phase -eq '') { $Phase = '(unknown)' }
 if ($Next -eq '') { $Next = '(not set)' }
 
 $nl = "`n"
-$status = '# STATUS' + $nl + $nl +
+$statusDoc = '# STATUS' + $nl + $nl +
   'Last updated: ' + $now + $nl + $nl +
   '## Phase' + $nl + $nl + $Phase + $nl + $nl +
   '## Status' + $nl + $nl + $Status + $nl + $nl +
   '## Decision' + $nl + $nl + $Decision + $nl + $nl +
   '## Next step' + $nl + $nl + $Next + $nl
-[System.IO.File]::WriteAllText($statusFile, $status, $utf8)
+[System.IO.File]::WriteAllText($statusFile, $statusDoc, $utf8)
 
 if (-not (Test-Path $progressFile)) {
   [System.IO.File]::WriteAllText($progressFile, '# PROGRESS' + $nl + $nl, $utf8)
