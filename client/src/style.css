@@ -238,3 +238,105 @@ body {
   background: #3ddc5a;
   box-shadow: 0 0 6px rgb(61 220 90 / 60%);
 }
+
+/* Ammo and hit feedback (phase 1d). */
+.hud-ammo {
+  position: fixed;
+  inset-block-end: 16px;
+  inset-inline-end: 20px;
+  color: #fff;
+  font:
+    700 18px/1 ui-monospace,
+    Consolas,
+    monospace;
+  letter-spacing: 3px;
+  text-shadow: 0 0 3px #000;
+  pointer-events: none;
+}
+
+.hud-ammo[data-state="empty"] {
+  color: #ff6b5a;
+}
+
+.hud-flash {
+  position: fixed;
+  inset-block-start: calc(50% - 12vmin);
+  inset-inline-start: 50%;
+  transform: translateX(-50%);
+  padding: 4px 12px;
+  color: #fff;
+  background: rgb(0 0 0 / 55%);
+  border-radius: 4px;
+  font:
+    700 18px/1.2 ui-monospace,
+    Consolas,
+    monospace;
+  pointer-events: none;
+}
+
+.hud-flash[data-lethal="1"] {
+  color: #ff4d3d;
+}
+
+.hud-flash[hidden] {
+  display: none;
+}
+
+/* Practice coach (D-028). */
+.coach-panel {
+  position: fixed;
+  inset-block-start: 44px;
+  inset-inline-end: 16px;
+  max-inline-size: min(420px, 42vw);
+  padding: 12px 14px;
+  color: #f4f4f4;
+  background: rgb(10 12 14 / 78%);
+  border: 1px solid rgb(255 255 255 / 15%);
+  border-radius: 8px;
+  font:
+    14px/1.6 system-ui,
+    "Segoe UI",
+    Tahoma,
+    sans-serif;
+  pointer-events: none;
+}
+
+.coach-panel[hidden],
+.coach-line[hidden] {
+  display: none;
+}
+
+.coach-title {
+  margin-block-end: 6px;
+  color: #2bff5c;
+  font-weight: 700;
+  font-size: 16px;
+}
+
+.coach-body p {
+  margin: 0 0 4px;
+}
+
+.coach-footer {
+  margin-block-start: 8px;
+  color: #b8b8b8;
+  font-size: 12px;
+}
+
+.coach-line {
+  position: fixed;
+  inset-block-end: calc(50% - 46vmin - 2px);
+  inset-inline-start: 50%;
+  transform: translate(-50%, 100%);
+  padding: 4px 12px;
+  color: #2bff5c;
+  background: rgb(0 0 0 / 70%);
+  border-radius: 4px;
+  font:
+    600 15px/1.4 system-ui,
+    "Segoe UI",
+    Tahoma,
+    sans-serif;
+  white-space: nowrap;
+  pointer-events: none;
+}

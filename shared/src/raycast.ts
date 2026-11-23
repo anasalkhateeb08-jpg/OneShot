@@ -23,6 +23,36 @@ export interface RayHit {
   kind: RayHitKind;
 }
 
+export interface SegmentHit {
+  /** Fraction along the segment, 0..1. */
+  t: number;
+  kind: RayHitKind;
+}
+
+/**
+ * First thing hit by segment a->b (terrain, walls, rocks), or null.
+ * Used for every bullet substep: the whole SEGMENT is tested, never just its end point.
+ */
+export function traceSegment(
+  world: WorldColliders,
+  a: Vec3,
+  b: Vec3,
+  terrainStepM = 1,
+): SegmentHit | null {
+  let best: SegmentHit | null = null;
+  for (const w of world.walls) {
+    const t = segmentAabb(a, b, w.box);
+    if (t !== null && (best === null || t < best.t)) best = { t, kind: "wall" };
+  }
+  for (const r of world.rocks) {
+    const t = segmentEllipsoid(a, b, r.collider);
+    if (t !== null && (best === null || t < best.t)) best = { t, kind: "rock" };
+  }
+  const tt = segmentTerrain(world.grid, a, b, terrainStepM);
+  if (tt !== null && (best === null || tt < best.t)) best = { t: tt, kind: "terrain" };
+  return best;
+}
+
 /**
  * Nearest hit along a ray, or null if nothing is hit within maxDistance.
  * @param terrainStepM terrain sampling interval (smaller = more precise, slower)

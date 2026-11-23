@@ -181,3 +181,42 @@ Desert canyon: 8.6x, 11x, 14x, 18x, 23x, 30x.
 A vertical zoom ladder sits on the black area beside the lens: one step per level with its
 magnification, lowest at the bottom; steps up to the selected level turn green, the rest stay
 white. V cycles, the mouse wheel steps up and down.
+
+## D-027 Firing, bullets, targets, and sound (ACTIVE, phase 1d)
+- Rifle state (`shared/src/rifle.ts`): 5 rounds, 1.8 s bolt cycle, 3.5 s reload (R).
+  Shared so the server enforces the same fire rate and magazine.
+- Launch (`launchState`): the bore sits 5 cm below the eye and is tilted by the zero angle;
+  aim = raw look + the deterministic sway at the moment of firing (the server will do this
+  part in duels).
+- Every bullet substep (240 Hz) tests its path SEGMENT against terrain, rocks, walls, and
+  bodies (`traceSegment`, `segmentHitbox`). Max flight 3 s.
+- Human hitbox (`shared/src/hitbox.ts`): oriented ellipsoids per posture (head, torso, limbs).
+  Head or torso = lethal (temporary rule, master section 3).
+- Practice targets: 7 human-size targets at 100, 200, 250 (walking), 300 (crouched),
+  350 (jogging), 400, and 450 m (prone). Their visual shapes ARE the hitbox shapes.
+  A lethal hit drops the target for 3 s; a red mark shows where the bullet hit.
+- Visible bullet: a glowing streak along the velocity, widened with distance so it stays
+  visible; impact puffs (sand, rock chips, blood).
+- Sound: made procedurally in code (no audio files): shot, bolt, reload, dry fire, impacts,
+  heartbeat while holding the breath, and a wind bed that follows the wind speed. Impact
+  sounds are delayed by distance / 343 m/s. The opponent's delayed shot sound arrives with the
+  AI enemy (phase 2) and online play (phase 3).
+- Recoil is a visual kick of the view (it does not move the aim of the shot already fired).
+
+## D-028 Green impact dot and training guide: PRACTICE ONLY (ACTIVE, owner decision 2026-11-23)
+In practice mode the scope shows a green dot where the bullet will land at the aimed distance,
+including wind and drop (`predictImpact`, in mils). A coach line under the lens explains the hold
+("distance 312 m, wind 2.3 m/s from the left, hold 0.4 mil left and 1.2 mil up"), and a lesson
+panel teaches step by step: scope and breath, distance and zeroing, drop, reading the wind, how
+much to hold, moving targets, and what changes in a duel (H show/hide, N next, P previous).
+Arabic and English drafts, NOT reviewed by a native editor; they move into the localization
+system in phase 8.
+Real duels have NO dot and NO coach: the player reads wind and drop alone (VISION pillar 4,
+add-on A6 "no aim assist"). The dot does not account for target movement.
+
+## D-029 Drag tuned for meaningful wind (ACTIVE, playtest tuning 2026-11-23)
+`BALLISTICS.dragK` 0.0004 -> 0.00085 (Appendix B values are first guesses to tune).
+With 0.0004 a 5 m/s crosswind moved the bullet only 11 cm at 300 m, so wind barely mattered.
+With 0.00085 (close to a real .308): speed at 300 m 659 m/s, drop 0.73 m, drift 25 cm at 300 m
+in 5 m/s (0.8 mil), 92 cm at 450 m in 8 m/s (2 mil). Reading the wind now matters.
+Reference values re-verified against the independent fine-step solver. Revert = one constant.

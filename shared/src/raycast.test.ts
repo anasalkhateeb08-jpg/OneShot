@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { PLAYER } from "./constants";
 import { directionFromYawPitch } from "./geometry";
 import { DESERT_CANYON } from "./mapDesert";
-import { raycastWorld } from "./raycast";
+import { raycastWorld, traceSegment } from "./raycast";
 import { buildHeightGrid, sampleHeight } from "./terrain";
 
 const map = DESERT_CANYON;
@@ -43,5 +43,18 @@ describe("raycastWorld", () => {
       expect(hit.point.x).toBeCloseTo(eye.x + dir.x * hit.distance, 6);
       expect(hit.point.z).toBeCloseTo(eye.z + dir.z * hit.distance, 6);
     }
+  });
+});
+
+describe("traceSegment", () => {
+  it("stops a bullet segment at the spawn boulder", () => {
+    const end = { x: eye.x, y: eye.y, z: eye.z - 20 };
+    const hit = traceSegment(world, eye, end);
+    expect(hit?.kind).toBe("rock");
+  });
+
+  it("lets a high segment pass over everything", () => {
+    const a = { x: 0, y: 200, z: 0 };
+    expect(traceSegment(world, a, { x: 0, y: 200, z: -50 })).toBeNull();
   });
 });

@@ -141,6 +141,30 @@ export function segmentEllipsoid(a: Vec3, b: Vec3, e: Ellipsoid): number | null 
   return segmentSphere(toUnit(a), toUnit(b), { center: { x: 0, y: 0, z: 0 }, radius: 1 });
 }
 
+/** Ellipsoid rotated around the vertical axis (body parts lying along a direction). */
+export interface OrientedEllipsoid {
+  center: Vec3;
+  /** Radii in the part's own frame: x = sideways, y = up, z = along the facing direction. */
+  radii: Vec3;
+  /** Facing yaw (same convention as the view: yaw 0 faces -Z). */
+  yaw: number;
+}
+
+/** Segment against a rotated ellipsoid. @returns t in [0, 1] or null. */
+export function segmentOrientedEllipsoid(a: Vec3, b: Vec3, e: OrientedEllipsoid): number | null {
+  const cos = Math.cos(e.yaw);
+  const sin = Math.sin(e.yaw);
+  // World -> local: local x = right, local z = forward (forward = (-sin, 0, -cos)).
+  const toUnit = (p: Vec3): Vec3 => {
+    const dx = p.x - e.center.x;
+    const dz = p.z - e.center.z;
+    const right = cos * dx - sin * dz;
+    const forward = -sin * dx - cos * dz;
+    return { x: right / e.radii.x, y: (p.y - e.center.y) / e.radii.y, z: forward / e.radii.z };
+  };
+  return segmentSphere(toUnit(a), toUnit(b), { center: { x: 0, y: 0, z: 0 }, radius: 1 });
+}
+
 /**
  * Small deterministic pseudo-random generator (mulberry32).
  * Same seed gives the same sequence on client and server.

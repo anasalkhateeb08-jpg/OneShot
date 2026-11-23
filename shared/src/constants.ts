@@ -10,7 +10,8 @@ export const SIM = { physicsHz: 60, serverTickHz: 30, bulletSubstepHz: 240 } as 
 export const BALLISTICS = {
   gravity: 9.81,
   muzzleSpeed: 850,
-  dragK: 0.0004,
+  /** Tuned in phase 1 (D-029): was 0.0004; 0.00085 gives realistic speed loss and wind drift. */
+  dragK: 0.00085,
   maxFlightSeconds: 3,
   /** Height of the scope's line of sight above the bore axis (added in phase 1, D-017). */
   sightHeightM: 0.05,

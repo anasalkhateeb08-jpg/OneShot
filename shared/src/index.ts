@@ -12,3 +12,6 @@ export * from "./mapDesert";
 export * from "./movement";
 export * from "./raycast";
 export * from "./scope";
+export * from "./hitbox";
+export * from "./rifle";
+export * from "./aimpoint";

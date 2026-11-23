@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   BULLET_DT,
   heightAtDistance,
+  launchState,
   muzzleVelocity,
   solveZeroPitch,
   stepBullet,
@@ -50,18 +51,18 @@ describe("stepBullet", () => {
   });
 
   it("gives the fixed expected drop at 300 m (reference from an independent fine-step solver)", () => {
-    // Reference: midpoint integration with dt = 1e-5 s, same equation and constants.
-    // Drop 0.6630 m, time of flight 0.3750 s, remaining speed 753.9 m/s.
+    // Reference: midpoint integration with dt = 1e-5 s, same equation and constants (dragK 0.00085).
+    // Drop 0.7296 m, time of flight 0.4020 s, remaining speed 658.7 m/s.
     const r = flyTo(300);
-    expect(r.y).toBeCloseTo(-0.663, 3);
-    expect(r.t).toBeCloseTo(0.375, 3);
-    expect(r.speed).toBeGreaterThan(753);
-    expect(r.speed).toBeLessThan(755);
+    expect(r.y).toBeCloseTo(-0.7296, 3);
+    expect(r.t).toBeCloseTo(0.402, 3);
+    expect(r.speed).toBeGreaterThan(657);
+    expect(r.speed).toBeLessThan(660);
   });
 
   it("drops more with drag than in vacuum at the same distance", () => {
     expect(flyTo(450).y).toBeLessThan(flyTo(450, STILL, 0).y);
-    expect(flyTo(450).y).toBeCloseTo(-1.556, 2);
+    expect(flyTo(450).y).toBeCloseTo(-1.804, 2);
   });
 
   it("drifts in the wind's direction, by the expected amount", () => {
@@ -69,8 +70,8 @@ describe("stepBullet", () => {
     const left = flyTo(300, { x: -5, y: 0, z: 0 });
     expect(right.x).toBeGreaterThan(0);
     expect(left.x).toBeLessThan(0);
-    // Reference 0.1103 m; equals the lag rule wind * (t - distance / muzzleSpeed).
-    expect(right.x).toBeCloseTo(0.1103, 3);
+    // Reference 0.2454 m; equals the lag rule wind * (t - distance / muzzleSpeed).
+    expect(right.x).toBeCloseTo(0.2454, 3);
     expect(left.x).toBeCloseTo(-right.x, 9);
   });
 
@@ -122,5 +123,24 @@ describe("zeroing", () => {
     const pitch300 = solveZeroPitch(300);
     expect(heightAtDistance(pitch300, 150)).toBeGreaterThan(0);
     expect(heightAtDistance(pitch300, 400)).toBeLessThan(0);
+  });
+});
+
+describe("launchState", () => {
+  it("hits the line of sight at the selected zero distance", () => {
+    const eye = { x: 3, y: 10, z: 0 };
+    RIFLE.zeroing.forEach((d, i) => {
+      let s = launchState(eye, 0, 0, i);
+      while (-s.pos.z < d) s = stepBullet(s, STILL, BULLET_DT);
+      // within one step (3.5 m) of the zero distance the path is still within 2 cm of the sight line
+      expect(Math.abs(s.pos.y - eye.y)).toBeLessThan(0.02);
+      expect(s.pos.x).toBeCloseTo(3, 9);
+    });
+  });
+
+  it("starts below the eye by the sight height, at the muzzle speed", () => {
+    const s = launchState({ x: 0, y: 2, z: 0 }, 0.4, 0.1, 0);
+    expect(s.pos.y).toBeCloseTo(2 - BALLISTICS.sightHeightM, 12);
+    expect(length(s.vel)).toBeCloseTo(BALLISTICS.muzzleSpeed, 9);
   });
 });

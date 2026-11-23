@@ -25,7 +25,14 @@ export interface HudState {
   rangeM: number | null | undefined;
   /** Breathing pulse for the vignette, 0..1. */
   pulse: number;
+  /** Practice only (D-028): predicted impact point relative to the crosshair, in mils. */
+  impactMils: { right: number; up: number } | null;
+  rounds: number;
+  magazine: number;
+  rifle: "ready" | "bolt" | "reload" | "empty";
 }
+
+const FLASH_MS = 2200;
 
 function svg<K extends keyof SVGElementTagNameMap>(
   tag: K,
@@ -63,6 +70,11 @@ export class Hud {
   private readonly info: HTMLDivElement;
   private readonly dot: HTMLDivElement;
   private readonly zoomSteps: HTMLDivElement[] = [];
+  private readonly ammo: HTMLDivElement;
+  private readonly impactDot: SVGCircleElement;
+  private readonly flashEl: HTMLDivElement;
+  private flashUntil = 0;
+  private lastAmmo = "";
   private lastZoomLevel = -1;
   private lastViewBox = "";
   private lastInfo = "";
@@ -76,6 +88,15 @@ export class Hud {
     div("hud-scope-ring", this.scope);
     this.reticle = svg("svg", { class: "hud-reticle", preserveAspectRatio: "xMidYMid meet" });
     this.buildReticle(this.reticle);
+    this.impactDot = svg("circle", {
+      r: 0.22,
+      fill: "#2bff5c",
+      stroke: "#003b10",
+      "stroke-width": 1,
+      "vector-effect": "non-scaling-stroke",
+    });
+    this.impactDot.style.display = "none";
+    this.reticle.appendChild(this.impactDot);
     this.scope.appendChild(this.reticle);
 
     const lung = div("hud-lung", this.scope);
@@ -106,6 +127,9 @@ export class Hud {
 
     this.range = div("hud-range", root);
     this.info = div("hud-info", root);
+    this.ammo = div("hud-ammo", root);
+    this.flashEl = div("hud-flash", root);
+    this.flashEl.hidden = true;
   }
 
   update(s: HudState): void {
@@ -124,6 +148,13 @@ export class Hud {
       this.lungFill.dataset.mode = s.breathMode;
       this.windArrow.style.transform = `rotate(${s.windRelativeRad}rad)`;
       this.windText.textContent = `${s.windSpeed.toFixed(1)} m/s`;
+      if (s.impactMils) {
+        this.impactDot.setAttribute("cx", s.impactMils.right.toFixed(3));
+        this.impactDot.setAttribute("cy", (-s.impactMils.up).toFixed(3));
+        this.impactDot.style.display = "";
+      } else {
+        this.impactDot.style.display = "none";
+      }
       if (s.zoomLevel !== this.lastZoomLevel) {
         this.zoomSteps.forEach((row, i) => {
           row.dataset.on = i <= s.zoomLevel ? "1" : "0";
@@ -145,11 +176,29 @@ export class Hud {
       this.range.textContent = s.rangeM === null ? "--- m" : `${Math.round(s.rangeM)} m`;
     }
 
+    const pips = "|".repeat(s.rounds) + ".".repeat(Math.max(0, s.magazine - s.rounds));
+    const status = s.rifle === "ready" ? "" : `  ${s.rifle.toUpperCase()}`;
+    const ammo = `${pips}${status}`;
+    if (ammo !== this.lastAmmo) {
+      this.ammo.textContent = ammo;
+      this.ammo.dataset.state = s.rifle;
+      this.lastAmmo = ammo;
+    }
+    if (!this.flashEl.hidden && performance.now() > this.flashUntil) this.flashEl.hidden = true;
+
     const info = `ZERO ${s.zeroM} m  |  ${s.zoom.toFixed(0)}x  |  ${s.posture.toUpperCase()}`;
     if (info !== this.lastInfo) {
       this.info.textContent = info;
       this.lastInfo = info;
     }
+  }
+
+  /** Shows a short hit message (for example "HEAD  312 m"). */
+  flash(text: string, lethal: boolean): void {
+    this.flashEl.textContent = text;
+    this.flashEl.dataset.lethal = lethal ? "1" : "0";
+    this.flashEl.hidden = false;
+    this.flashUntil = performance.now() + FLASH_MS;
   }
 
   private buildReticle(root: SVGSVGElement): void {

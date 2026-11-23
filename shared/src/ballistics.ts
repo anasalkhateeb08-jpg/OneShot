@@ -9,7 +9,7 @@
  * Pure functions, no internal state: identical inputs give identical outputs everywhere.
  */
 import { BALLISTICS, RIFLE, SIM } from "./constants";
-import { normalize, scale } from "./geometry";
+import { directionFromYawPitch, normalize, scale } from "./geometry";
 import type { Vec3 } from "./messages";
 
 export interface BulletState {
@@ -139,4 +139,25 @@ let zeroCache: readonly number[] | null = null;
 export function zeroPitches(): readonly number[] {
   if (zeroCache === null) zeroCache = RIFLE.zeroing.map((d) => solveZeroPitch(d));
   return zeroCache;
+}
+
+/**
+ * Bullet state at the moment of firing. The bore sits BALLISTICS.sightHeightM below the eye
+ * (line of sight) and is tilted up by the zero angle of the selected zeroing, so a level shot
+ * crosses the line of sight exactly at the zero distance.
+ * @param aimYaw final aim yaw (raw look + sway, applied by the server in duels)
+ * @param aimPitch final aim pitch (raw look + sway)
+ */
+export function launchState(
+  eye: Vec3,
+  aimYaw: number,
+  aimPitch: number,
+  zeroIndex: number,
+): BulletState {
+  const zero = zeroPitches()[zeroIndex] ?? 0;
+  const dir = directionFromYawPitch(aimYaw, aimPitch + zero);
+  return {
+    pos: { x: eye.x, y: eye.y - BALLISTICS.sightHeightM, z: eye.z },
+    vel: muzzleVelocity(dir),
+  };
 }
