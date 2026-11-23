@@ -17,6 +17,18 @@ describe("IdleInputSource", () => {
     expect(a.scoped).toBe(false);
     expect(a.holdBreath).toBe(false);
     expect(a.zeroIndex).toBe(0);
+  });
+
+  it("has no local controls or actions, and accepts a look scale", () => {
+    const source: InputSource = new IdleInputSource();
+    expect(source.localControls()).toEqual({ rangefinder: false });
+    expect(source.consumeActions()).toEqual({
+      fire: false,
+      reload: false,
+      zoomDelta: 0,
+      cycleZoom: false,
+    });
+    expect(() => source.setLookScale(0.1)).not.toThrow();
     expect(() => source.dispose()).not.toThrow();
   });
 });

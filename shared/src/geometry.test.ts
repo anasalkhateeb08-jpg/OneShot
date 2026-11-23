@@ -3,6 +3,7 @@ import {
   createRng,
   directionFromYawPitch,
   segmentAabb,
+  segmentEllipsoid,
   segmentSphere,
   wrapAngle,
   yawPitchFromDirection,
@@ -57,6 +58,24 @@ describe("segment tests (a path SEGMENT, never just a point)", () => {
     expect(segmentSphere({ x: 0, y: 0, z: 0 }, { x: 0, y: 0, z: -20 }, s)).toBeCloseTo(0.45, 12);
     expect(segmentSphere({ x: 2, y: 0, z: 0 }, { x: 2, y: 0, z: -20 }, s)).toBeNull();
     expect(segmentSphere({ x: 0, y: 0, z: -10 }, { x: 0, y: 0, z: -20 }, s)).toBe(0);
+  });
+});
+
+describe("segmentEllipsoid", () => {
+  const rock = { center: { x: 0, y: 1, z: -10 }, radiusXZ: 3, radiusY: 1 };
+
+  it("hits a wide, flat rock where a sphere of its height would miss", () => {
+    const t = segmentEllipsoid({ x: 2.5, y: 1, z: 0 }, { x: 2.5, y: 1, z: -20 }, rock);
+    expect(t).not.toBeNull();
+  });
+
+  it("misses just above the rock's top", () => {
+    expect(segmentEllipsoid({ x: 0, y: 2.05, z: 0 }, { x: 0, y: 2.05, z: -20 }, rock)).toBeNull();
+  });
+
+  it("finds the entry point on the front face", () => {
+    const t = segmentEllipsoid({ x: 0, y: 1, z: 0 }, { x: 0, y: 1, z: -20 }, rock);
+    expect(t).toBeCloseTo(7 / 20, 12);
   });
 });
 

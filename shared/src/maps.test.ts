@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { horizontalDistance, segmentAabb, segmentSphere } from "./geometry";
+import { horizontalDistance, segmentAabb, segmentEllipsoid } from "./geometry";
 import type { Vec3 } from "./messages";
 import { DESERT_CANYON, DESERT_ZONE_HEIGHT } from "./mapDesert";
 import { clampToZone, isInZone, mirrorBox } from "./maps";
@@ -11,7 +11,7 @@ const grid = buildHeightGrid(map.grid, map.heightAt);
 
 function lineOfSightBlocked(a: Vec3, b: Vec3): boolean {
   if (map.walls.some((w) => segmentAabb(a, b, w.box) !== null)) return true;
-  if (map.rocks.some((r) => segmentSphere(a, b, r.collider) !== null)) return true;
+  if (map.rocks.some((r) => segmentEllipsoid(a, b, r.collider) !== null)) return true;
   return segmentTerrain(grid, a, b, 1) !== null;
 }
 
@@ -40,6 +40,11 @@ describe("desert canyon map", () => {
     }
     expect(map.rocks.length % 2).toBe(0);
     expect(map.shrubs.length % 2).toBe(0);
+  });
+
+  it("uses only natural cover in the desert (no walls)", () => {
+    expect(map.walls).toHaveLength(0);
+    expect(map.rocks.length).toBeGreaterThan(100);
   });
 
   it("puts the two spawns at least 350 m apart (master section 9)", () => {

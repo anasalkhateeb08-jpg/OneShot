@@ -29,6 +29,27 @@ export const SWAY = {
   transitionS: 0.25,
 } as const;
 
+/**
+ * Scope optics (added in phase 1c, D-022; variable zoom D-023, D-026). Mil-dot reticle:
+ * 1 mil = 1 milliradian, identical for every player (master section 18).
+ * The LOWEST zoom is derived from the map: through the lens the player sees at most
+ * `maxViewOfEnemyZone` of the enemy zone's width (owner rule: the whole zone, no more).
+ */
+export const SCOPE = {
+  unscopedFovDeg: 70,
+  transitionS: 0.12,
+  milDots: 5,
+  /** The lens circle's diameter as a fraction of the screen height (matches the HUD). */
+  lensFractionOfHeight: 0.92,
+  maxViewOfEnemyZone: 1,
+  /** Highest zoom = lowest zoom x this. */
+  maxOverMinZoom: 3.5,
+  zoomLevels: 6,
+} as const;
+
+/** Rangefinder (added in phase 1c, D-022). Local only; the opponent never sees it. */
+export const RANGEFINDER = { maxRangeM: 1500 } as const;
+
 /** Sound (added in phase 1, D-017). The shot is heard late by distance / speed of sound. */
 export const AUDIO = { speedOfSoundMps: 343 } as const;
 
@@ -44,7 +65,7 @@ export const RIFLE = {
 export const PLAYER = {
   eyeHeight: { stand: 1.7, crouch: 1.0, prone: 0.4 },
   speed: { stand: 3.5, crouch: 1.8, prone: 0.8 },
-  swayMultiplier: { stand: 1.0, crouch: 0.6, prone: 0.3 },
+  swayMultiplier: { stand: 1.0, crouch: 0.5, prone: 0.15 },
   breathHoldSwayFactor: 0.15,
   breathHoldFovFactor: 0.85,
   lungDrainPerS: 0.125,

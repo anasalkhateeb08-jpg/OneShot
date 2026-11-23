@@ -1,6 +1,6 @@
 import { RIFLE } from "@oneshot/shared";
 import type { ClientInput, InputClass, Posture } from "@oneshot/shared";
-import type { InputSource } from "./InputSource";
+import type { InputActions, InputSource, LocalControls } from "./InputSource";
 
 /** Radians of view rotation per pixel of mouse movement (adjustable in settings later). */
 const DEFAULT_SENSITIVITY = 0.0022;
@@ -12,7 +12,9 @@ const MAX_ZERO_INDEX = RIFLE.zeroing.length - 1;
  * Uses physical key codes (KeyW, KeyA...) so it works with any keyboard language.
  *
  *   W A S D move | mouse look | right mouse scope (hold) | Shift hold breath
- *   C crouch | Z prone | X stand | mouse wheel or Q / E zeroing
+ *   C crouch | Z prone | X stand | Q / E zeroing
+ *   mouse wheel scope zoom | V cycle scope zoom (owner choice, D-023)
+ *   left mouse fire | R reload | B rangefinder (hold)
  *   Click the game to capture the mouse; Esc releases it.
  */
 export class KeyboardMouseInput implements InputSource {
@@ -26,6 +28,11 @@ export class KeyboardMouseInput implements InputSource {
   private posture: Posture = "stand";
   private scoped = false;
   private zeroIndex: 0 | 1 | 2 | 3 = 0;
+  private lookScale = 1;
+  private firePressed = false;
+  private reloadPressed = false;
+  private zoomDelta = 0;
+  private cycleZoom = false;
   private readonly disposers: Array<() => void> = [];
 
   constructor(
@@ -72,6 +79,28 @@ export class KeyboardMouseInput implements InputSource {
     };
   }
 
+  localControls(): LocalControls {
+    return { rangefinder: this.keys.has("KeyB") };
+  }
+
+  consumeActions(): InputActions {
+    const actions: InputActions = {
+      fire: this.firePressed,
+      reload: this.reloadPressed,
+      zoomDelta: this.zoomDelta,
+      cycleZoom: this.cycleZoom,
+    };
+    this.firePressed = false;
+    this.reloadPressed = false;
+    this.zoomDelta = 0;
+    this.cycleZoom = false;
+    return actions;
+  }
+
+  setLookScale(scale: number): void {
+    if (Number.isFinite(scale) && scale > 0) this.lookScale = scale;
+  }
+
   dispose(): void {
     for (const off of this.disposers) off();
     this.disposers.length = 0;
@@ -91,6 +120,10 @@ export class KeyboardMouseInput implements InputSource {
   private releaseAll(): void {
     this.keys.clear();
     this.scoped = false;
+    this.firePressed = false;
+    this.reloadPressed = false;
+    this.zoomDelta = 0;
+    this.cycleZoom = false;
   }
 
   private onKeyDown(e: KeyboardEvent): void {
@@ -112,6 +145,12 @@ export class KeyboardMouseInput implements InputSource {
       case "KeyE":
         this.changeZero(1);
         break;
+      case "KeyV":
+        if (!e.repeat) this.cycleZoom = true;
+        break;
+      case "KeyR":
+        if (!e.repeat) this.reloadPressed = true;
+        break;
       default:
         break;
     }
@@ -119,8 +158,9 @@ export class KeyboardMouseInput implements InputSource {
 
   private onMouseMove(e: MouseEvent): void {
     if (!this.isLocked()) return;
-    this.yaw -= e.movementX * this.sensitivity;
-    this.pitch -= e.movementY * this.sensitivity;
+    const k = this.sensitivity * this.lookScale;
+    this.yaw -= e.movementX * k;
+    this.pitch -= e.movementY * k;
     if (this.pitch > PITCH_LIMIT) this.pitch = PITCH_LIMIT;
     if (this.pitch < -PITCH_LIMIT) this.pitch = -PITCH_LIMIT;
     const twoPi = Math.PI * 2;
@@ -133,13 +173,14 @@ export class KeyboardMouseInput implements InputSource {
       void this.element.requestPointerLock();
       return;
     }
+    if (e.button === 0) this.firePressed = true;
     if (e.button === 2) this.scoped = true;
   }
 
   private onWheel(e: WheelEvent): void {
     if (!this.isLocked()) return;
     e.preventDefault();
-    this.changeZero(e.deltaY < 0 ? 1 : -1);
+    this.zoomDelta += e.deltaY < 0 ? 1 : -1;
   }
 
   private changeZero(delta: number): void {

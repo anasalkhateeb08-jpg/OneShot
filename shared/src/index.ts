@@ -10,3 +10,5 @@ export * from "./terrain";
 export * from "./maps";
 export * from "./mapDesert";
 export * from "./movement";
+export * from "./raycast";
+export * from "./scope";

@@ -57,3 +57,184 @@ body {
 .dev-hint[hidden] {
   display: none;
 }
+
+/* ---------- HUD (phase 1c) ---------- */
+
+.hud-vignette {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0;
+  background: radial-gradient(ellipse at center, transparent 45%, rgb(0 0 0 / 85%) 100%);
+}
+
+.hud-vignette[data-mode="exhausted"] {
+  background: radial-gradient(ellipse at center, transparent 40%, rgb(70 0 0 / 90%) 100%);
+}
+
+.hud-dot {
+  position: fixed;
+  inset-block-start: 50%;
+  inset-inline-start: 50%;
+  inline-size: 4px;
+  block-size: 4px;
+  margin: -2px;
+  border-radius: 50%;
+  background: rgb(255 255 255 / 80%);
+  box-shadow: 0 0 2px rgb(0 0 0 / 80%);
+  pointer-events: none;
+}
+
+.hud-scope {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  color: #050505;
+}
+
+.hud-scope[hidden],
+.hud-dot[hidden],
+.hud-range[hidden] {
+  display: none;
+}
+
+/* The lens: a circle with everything outside it black. */
+.hud-scope-ring {
+  position: absolute;
+  inset-block-start: 50%;
+  inset-inline-start: 50%;
+  inline-size: 92vmin;
+  block-size: 92vmin;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  box-shadow:
+    0 0 0 200vmax #000,
+    inset 0 0 6vmin 1vmin rgb(0 0 0 / 85%);
+}
+
+.hud-reticle {
+  position: absolute;
+  inset: 0;
+  inline-size: 100%;
+  block-size: 100%;
+  clip-path: circle(46vmin at 50% 50%);
+}
+
+.hud-lung {
+  position: absolute;
+  inset-block-end: calc(50% - 40vmin);
+  inset-inline-start: 50%;
+  inline-size: 18vmin;
+  block-size: 6px;
+  transform: translateX(-50%);
+  background: rgb(255 255 255 / 25%);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.hud-lung-fill {
+  block-size: 100%;
+  inline-size: 100%;
+  background: #e8e8e8;
+}
+
+.hud-lung-fill[data-mode="holding"] {
+  background: #7fd4ff;
+}
+
+.hud-lung-fill[data-mode="exhausted"] {
+  background: #ff5a4a;
+}
+
+.hud-wind {
+  position: absolute;
+  inset-block-end: calc(50% - 36vmin);
+  inset-inline-start: calc(50% - 34vmin);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #f2f2f2;
+  font:
+    600 14px/1 ui-monospace,
+    Consolas,
+    monospace;
+  text-shadow: 0 0 3px #000;
+}
+
+.hud-wind-arrow {
+  inline-size: 28px;
+  block-size: 28px;
+}
+
+.hud-wind-svg {
+  inline-size: 100%;
+  block-size: 100%;
+  filter: drop-shadow(0 0 2px #000);
+}
+
+.hud-range {
+  position: fixed;
+  inset-block-start: calc(50% + 6vmin);
+  inset-inline-start: 50%;
+  transform: translateX(-50%);
+  padding: 3px 8px;
+  color: #b9ff9c;
+  background: rgb(0 0 0 / 55%);
+  border-radius: 4px;
+  font:
+    600 16px/1.2 ui-monospace,
+    Consolas,
+    monospace;
+  pointer-events: none;
+}
+
+.hud-info {
+  position: fixed;
+  inset-block-end: 16px;
+  inset-inline-start: 16px;
+  color: #fff;
+  font:
+    600 13px/1.2 ui-monospace,
+    Consolas,
+    monospace;
+  text-shadow: 0 0 3px #000;
+  pointer-events: none;
+}
+
+/* Zoom ladder beside the lens (owner design, D-026). */
+.hud-zoom {
+  position: absolute;
+  inset-block-start: 50%;
+  inset-inline-start: calc(50% + 49vmin);
+  transform: translateY(-50%);
+  display: flex;
+  flex-direction: column;
+  gap: 2.2vmin;
+}
+
+.hud-zoom-step {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: #fff;
+  font:
+    700 15px/1 ui-monospace,
+    Consolas,
+    monospace;
+}
+
+.hud-zoom-tick {
+  inline-size: 30px;
+  block-size: 5px;
+  border-radius: 3px;
+  background: #fff;
+}
+
+.hud-zoom-step[data-on="1"] {
+  color: #3ddc5a;
+}
+
+.hud-zoom-step[data-on="1"] .hud-zoom-tick {
+  background: #3ddc5a;
+  box-shadow: 0 0 6px rgb(61 220 90 / 60%);
+}

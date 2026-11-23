@@ -118,6 +118,29 @@ export function segmentSphere(a: Vec3, b: Vec3, sphere: Sphere): number | null {
   return t >= 0 && t <= 1 ? t : null;
 }
 
+/** Ellipsoid with a round horizontal section (rocks, boulders). */
+export interface Ellipsoid {
+  center: Vec3;
+  /** Radius along X and Z. */
+  radiusXZ: number;
+  /** Radius along Y (height). */
+  radiusY: number;
+}
+
+/**
+ * First intersection of segment a->b with an ellipsoid (scaled to a unit sphere; the segment
+ * parameter t is unchanged by the scaling).
+ * @returns t in [0, 1] (0 if a is inside), or null if no hit.
+ */
+export function segmentEllipsoid(a: Vec3, b: Vec3, e: Ellipsoid): number | null {
+  const toUnit = (p: Vec3): Vec3 => ({
+    x: (p.x - e.center.x) / e.radiusXZ,
+    y: (p.y - e.center.y) / e.radiusY,
+    z: (p.z - e.center.z) / e.radiusXZ,
+  });
+  return segmentSphere(toUnit(a), toUnit(b), { center: { x: 0, y: 0, z: 0 }, radius: 1 });
+}
+
 /**
  * Small deterministic pseudo-random generator (mulberry32).
  * Same seed gives the same sequence on client and server.

@@ -11,7 +11,10 @@ const WALL_COLORS: Record<WallMaterial, number> = {
 const SHRUB_COLOR = 0x6c6a3c;
 const ROCK_VARIANTS = 3;
 
-/** A rock shape: an icosphere pushed in and out by noise, faceted for a hard look. */
+/**
+ * A rock shape: an icosphere pushed in and out by noise (at most 12%), faceted for a hard
+ * look. Scaled to the collider ellipsoid, so what you see is close to what stops a bullet.
+ */
 function rockGeometry(variant: number): THREE.BufferGeometry {
   const geometry = new THREE.IcosahedronGeometry(1, 2);
   const pos = geometry.getAttribute("position");
@@ -21,7 +24,7 @@ function rockGeometry(variant: number): THREE.BufferGeometry {
     const y = pos.getY(i);
     const z = pos.getZ(i);
     const n = fbm2(x * 1.7 + y * 0.9, z * 1.7 - y * 0.6, seed, 3);
-    const s = 1 + 0.28 * n;
+    const s = 1 + 0.12 * n;
     pos.setXYZ(i, x * s, y * s, z * s);
   }
   geometry.computeVertexNormals();
@@ -79,10 +82,10 @@ export function createProps(map: MapDef): { group: THREE.Group; dispose(): void 
     const geometry = rockGeometry(v);
     const mesh = new THREE.InstancedMesh(geometry, rockMat, rocks.length);
     rocks.forEach((r, i) => {
-      const visualRadius = r.collider.radius / r.squashY;
-      p.set(r.collider.center.x, r.collider.center.y, r.collider.center.z);
+      const c = r.collider;
+      p.set(c.center.x, c.center.y, c.center.z);
       q.setFromAxisAngle(up, r.rotY);
-      s.set(visualRadius, visualRadius * r.squashY, visualRadius);
+      s.set(c.radiusXZ, c.radiusY, c.radiusXZ);
       m.compose(p, q, s);
       mesh.setMatrixAt(i, m);
     });

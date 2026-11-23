@@ -135,3 +135,49 @@ follows the player (60 m range), a hemisphere fill, 26 walls (ruined outpost, sp
 zone low walls, scattered ruins), 110 rocks, 440 shrubs, all instanced. Surfaces use vertex
 colors for now; photoscanned textures (D-014) replace them in step 1e, after we measure
 performance with the plain version first.
+
+## D-022 Scope, breath, rangefinder details (ACTIVE)
+- Scope: 10x magnification (unscoped vertical FOV 70 degrees, scoped about 8 degrees), done by
+  changing the main camera's FOV only (master section 7). Breath-hold narrows it by
+  `PLAYER.breathHoldFovFactor`. Mouse sensitivity is divided by the current zoom.
+- Mil-dot reticle drawn in milliradian units with the view box set from the live FOV, so 1 mil
+  on the reticle is exactly 1 milliradian in the world at any zoom (first focal plane).
+  5 dots each way, 0.25 mil dots. Identical for every player.
+- Breath-hold works only while scoped (the server will apply the same rule).
+- Sway is applied to the view at all times (barely visible unscoped, clear in the scope).
+- Rangefinder (hold B): distance to the aimed point up to 1500 m plus wind speed and direction.
+  The wind gauge in the scope shows the wind relative to where you look.
+- New constants `SCOPE` and `RANGEFINDER`. HUD text is English developer text until phase 8.
+
+## D-023 Variable scope zoom with a map-derived minimum (ACTIVE, owner directive 2026-11-23)
+The player chooses the scope zoom: V cycles the levels, the mouse wheel steps up and down.
+Owner rule: even the LOWEST zoom shows at most HALF of the enemy zone's width through the lens,
+never all of it. The range is computed from each map (`scopeZoomRange`): lowest = the zoom at
+which the lens circle covers half the enemy zone width at the zone-to-zone distance; highest =
+1.75 x lowest; 4 geometric levels. Desert canyon (400 m, 60 m zones): 17x, 21x, 25x, 30x.
+Replaces the fixed 10x of D-022.
+Deviation from master section 2: zeroing moves to Q and E only (the wheel now zooms).
+
+## D-024 Stronger posture effect on sway (ACTIVE, owner directive 2026-11-23)
+`PLAYER.swayMultiplier` changed from stand 1.0 / crouch 0.6 / prone 0.3 to
+stand 1.0 / crouch 0.5 / prone 0.15: a prone body pressed to the ground barely sways.
+The price of going prone is natural, from the geometry: the eye drops to 0.4 m, so rocks,
+ridges, and low walls hide the enemy from many prone spots (and the player moves at 0.8 m/s).
+Every posture has a cost.
+
+## D-025 Desert cover is natural only (ACTIVE, owner directive 2026-11-23)
+Walls in the open desert look fake. All desert cover now comes from the desert itself:
+a big boulder group in front of each spawn, low boulders inside each zone, a central rock
+formation (replaces the "ruined outpost" of master section 9), 7 rock outcrops, 9 sand dunes
+(2.5 to 6 m, mirrored), and scattered rocks: 180 rocks in total, all mirrored.
+Rocks now use ELLIPSOID colliders (wide and low like real boulders), and the visual rock shape
+is scaled to the same ellipsoid (surface noise at most 12%), so what you see stops the bullet.
+Walls stay available for maps that need them (the city map).
+
+## D-026 Wider scope zoom range and a zoom ladder (ACTIVE, owner directive 2026-11-23)
+Replaces the "half the enemy zone" rule of D-023: the LOWEST zoom now shows the WHOLE enemy
+zone width and no more (owner choice). Highest = 3.5 x lowest, 6 levels.
+Desert canyon: 8.6x, 11x, 14x, 18x, 23x, 30x.
+A vertical zoom ladder sits on the black area beside the lens: one step per level with its
+magnification, lowest at the bottom; steps up to the selected level turn green, the rest stay
+white. V cycles, the mouse wheel steps up and down.

@@ -1,6 +1,13 @@
 import type * as THREE from "three/webgpu";
 import { PLAYER, sampleHeight, stepMovement } from "@oneshot/shared";
-import type { ClientInput, HeightGrid, PlayerZone, Posture, Vec3 } from "@oneshot/shared";
+import type {
+  AngleOffset,
+  ClientInput,
+  HeightGrid,
+  PlayerZone,
+  Posture,
+  Vec3,
+} from "@oneshot/shared";
 
 /** Seconds for the eye to move most of the way to a new posture height. */
 const POSTURE_EASE_S = 0.18;
@@ -41,16 +48,22 @@ export class LocalPlayer {
     this.eye += (target - this.eye) * (1 - Math.exp(-dt / POSTURE_EASE_S));
   }
 
-  /** Places the camera at the eye, interpolated between the last two physics steps. */
-  applyToCamera(camera: THREE.PerspectiveCamera, alpha: number): void {
+  /** Eye position, interpolated between the last two physics steps. */
+  eyePosition(alpha: number): Vec3 {
     const a = this.prevFeet;
     const b = this.feet;
     const eye = this.prevEye + (this.eye - this.prevEye) * alpha;
-    camera.position.set(
-      a.x + (b.x - a.x) * alpha,
-      a.y + (b.y - a.y) * alpha + eye,
-      a.z + (b.z - a.z) * alpha,
-    );
-    camera.rotation.set(this.pitch, this.yaw, 0);
+    return {
+      x: a.x + (b.x - a.x) * alpha,
+      y: a.y + (b.y - a.y) * alpha + eye,
+      z: a.z + (b.z - a.z) * alpha,
+    };
+  }
+
+  /** Places the camera at the eye, aimed with the given sway offset added. */
+  applyToCamera(camera: THREE.PerspectiveCamera, alpha: number, sway: AngleOffset): void {
+    const p = this.eyePosition(alpha);
+    camera.position.set(p.x, p.y, p.z);
+    camera.rotation.set(this.pitch + sway.pitch, this.yaw + sway.yaw, 0);
   }
 }

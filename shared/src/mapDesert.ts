@@ -1,13 +1,13 @@
 /**
- * Map 1: desert canyon with a ruined outpost (master section 9).
+ * Map 1: desert canyon (master section 9, natural cover per D-025).
+ * All cover comes from the desert itself: boulders, rock outcrops, and sand dunes. No walls.
  * Everything is mirrored through the map center, (x, z) -> (-x, -z), so neither side has
  * an advantage. Player A sits in the north zone looking south (-Z), player B the reverse.
  * The sun comes from the side (+X), so it is side-light for both players.
  */
 import { createRng, normalize } from "./geometry";
-import type { Aabb } from "./geometry";
-import { isInZone, mirrorBox, mirrorXZ, zoneBlend } from "./maps";
-import type { MapDef, PlayerZone, RockProp, ShrubProp, WallMaterial, WallProp } from "./maps";
+import { isInZone, mirrorXZ, zoneBlend } from "./maps";
+import type { MapDef, PlayerZone, RockProp, ShrubProp } from "./maps";
 import { fbm2, smoothstep } from "./noise";
 
 const SEED = 7301;
@@ -16,10 +16,57 @@ const ZONE_HALF_DEPTH = 15;
 const ZONE_CENTER_Z = 200;
 const ZONE_RAISE_M = 3;
 const ZONE_BLEND_M = 25;
+/** Fraction of a rock's height kept above the ground (the rest is buried). */
+const ROCK_ABOVE_GROUND = 0.65;
 
 /** Noise made symmetric under (x, z) -> (-x, -z). */
 function sym(x: number, z: number, seed: number, octaves: number): number {
   return 0.5 * (fbm2(x, z, seed, octaves) + fbm2(-x, -z, seed, octaves));
+}
+
+interface Dune {
+  x: number;
+  z: number;
+  height: number;
+  /** Half-length along the crest and half-width across it. */
+  along: number;
+  across: number;
+  /** Crest direction, radians from +X. */
+  angle: number;
+}
+
+/** Sand dunes in the north half; the height function adds their mirror automatically. */
+const DUNES: readonly Dune[] = (() => {
+  const rng = createRng(SEED + 61);
+  const list: Dune[] = [];
+  for (let i = 0; i < 9; i++) {
+    list.push({
+      x: (rng() * 2 - 1) * 200,
+      z: 35 + rng() * 120,
+      height: 2.5 + rng() * 3.5,
+      along: 18 + rng() * 20,
+      across: 7 + rng() * 6,
+      angle: (rng() - 0.5) * 0.9,
+    });
+  }
+  return list;
+})();
+
+function duneHeight(x: number, z: number): number {
+  let h = 0;
+  for (const d of DUNES) {
+    for (const sign of [1, -1]) {
+      const dx = x - sign * d.x;
+      const dz = z - sign * d.z;
+      const c = Math.cos(d.angle);
+      const s = Math.sin(d.angle);
+      const u = (dx * c + dz * s) / d.along;
+      const v = (-dx * s + dz * c) / d.across;
+      const r2 = u * u + v * v;
+      if (r2 < 9) h += d.height * Math.exp(-r2);
+    }
+  }
+  return h;
 }
 
 /** Natural ground before the zone plateaus are blended in. */
@@ -32,6 +79,7 @@ function baseHeight(x: number, z: number): number {
   h += back * 35;
   const ridgeMask = smoothstep(0.05, 0.45, sym(x * 0.025, 0, SEED + 23, 2));
   h += 6 * Math.exp(-((z / 28) ** 2)) * ridgeMask;
+  h += duneHeight(x, z);
   return h;
 }
 
@@ -67,104 +115,115 @@ function heightAt(x: number, z: number): number {
   return h;
 }
 
-/** Box standing on the ground at (cx, cz), sunk 0.4 m so it never floats. */
-function standingBox(cx: number, cz: number, halfX: number, halfZ: number, heightM: number): Aabb {
-  const ground = Math.min(
-    heightAt(cx - halfX, cz - halfZ),
-    heightAt(cx + halfX, cz - halfZ),
-    heightAt(cx - halfX, cz + halfZ),
-    heightAt(cx + halfX, cz + halfZ),
-  );
-  const y0 = ground - 0.4;
-  return {
-    min: { x: cx - halfX, y: y0, z: cz - halfZ },
-    max: { x: cx + halfX, y: y0 + 0.4 + heightM, z: cz + halfZ },
-  };
+/** A rock sitting on the ground, partly buried. */
+function rockAt(
+  x: number,
+  z: number,
+  radiusXZ: number,
+  radiusY: number,
+  variant: number,
+  rotY: number,
+): RockProp {
+  const y = heightAt(x, z) + radiusY * (2 * ROCK_ABOVE_GROUND - 1);
+  return { collider: { center: { x, y, z }, radiusXZ, radiusY }, variant, rotY };
 }
 
-function buildWalls(): WallProp[] {
-  const half: WallProp[] = [];
-  const add = (box: Aabb, material: WallMaterial): void => {
-    half.push({ box, material });
-  };
+/** Hand-placed cover for the north half (the mirror adds the south half). */
+function coverRocks(): RockProp[] {
+  return [
+    // Spawn cover: a big boulder with two smaller ones (hides the spawn at the start).
+    rockAt(0, ZONE_CENTER_Z - 8, 3.4, 2.6, 0, 0.3),
+    rockAt(-3.6, ZONE_CENTER_Z - 7, 1.8, 1.4, 1, 1.2),
+    rockAt(3.8, ZONE_CENTER_Z - 9, 1.6, 1.2, 2, 2.4),
+    // Low boulders inside the zone (crouch and prone cover).
+    rockAt(-18, ZONE_CENTER_Z - 5, 2.2, 1.0, 1, 0.8),
+    rockAt(18, ZONE_CENTER_Z - 4, 2.0, 1.0, 2, 2.0),
+    rockAt(-27, ZONE_CENTER_Z + 6, 1.8, 1.3, 0, 1.6),
+    rockAt(26, ZONE_CENTER_Z + 8, 2.0, 1.5, 1, 0.4),
+    // Central rock formation (half of it).
+    rockAt(-7, 6, 6.5, 5.0, 0, 0.2),
+    rockAt(5, 10, 4.5, 3.2, 1, 1.4),
+    rockAt(12, 3, 3.0, 2.2, 2, 2.9),
+  ];
+}
 
-  // Spawn cover in front of each spawn (blocks the spawn-to-spawn view at the start).
-  add(standingBox(0, ZONE_CENTER_Z - 7, 4, 0.3, 2.6), "stone");
-  // Low side walls inside the zone (crouch and prone cover).
-  add(standingBox(-18, ZONE_CENTER_Z - 4, 2.5, 0.3, 1.2), "stone");
-  add(standingBox(18, ZONE_CENTER_Z - 4, 2.5, 0.3, 1.2), "stone");
-
-  // Ruined outpost at the center: half of a 24 x 24 compound (the mirror adds the rest).
-  add(standingBox(-6, 12, 6, 0.4, 3.2), "mudbrick");
-  add(standingBox(9, 12, 3, 0.4, 1.8), "mudbrick");
-  add(standingBox(12, 4, 0.4, 6, 2.6), "mudbrick");
-  add(standingBox(3, 3, 2, 2, 5.5), "mudbrick");
-
-  // Scattered ruins in the midfield.
+/** Rock outcrops in the midfield: clusters of 3 to 4 boulders. */
+function outcrops(): RockProp[] {
   const rng = createRng(SEED + 31);
-  for (let i = 0; i < 6; i++) {
-    const x = (rng() * 2 - 1) * 190;
-    const z = 40 + rng() * 110;
-    const alongX = rng() < 0.5;
-    const len = 2 + rng() * 4;
-    const h = 1.2 + rng() * 2.2;
-    add(standingBox(x, z, alongX ? len : 0.35, alongX ? 0.35 : len, h), "mudbrick");
+  const list: RockProp[] = [];
+  for (let i = 0; i < 7; i++) {
+    const cx = (rng() * 2 - 1) * 190;
+    const cz = 40 + rng() * 110;
+    const count = 3 + Math.floor(rng() * 2);
+    for (let k = 0; k < count; k++) {
+      const r = 1.6 + rng() * 2.4;
+      list.push(
+        rockAt(
+          cx + (rng() * 2 - 1) * 5,
+          cz + (rng() * 2 - 1) * 5,
+          r,
+          r * (0.6 + rng() * 0.3),
+          Math.floor(rng() * 3),
+          rng() * Math.PI * 2,
+        ),
+      );
+    }
   }
-
-  const mirrored = half.map((w) => ({ box: mirrorBox(w.box), material: w.material }));
-  return [...half, ...mirrored];
+  return list;
 }
 
-function insideAnyBox(walls: readonly WallProp[], x: number, z: number, margin: number): boolean {
-  return walls.some(
-    (w) =>
-      x > w.box.min.x - margin &&
-      x < w.box.max.x + margin &&
-      z > w.box.min.z - margin &&
-      z < w.box.max.z + margin,
-  );
-}
-
-function buildRocks(walls: readonly WallProp[]): RockProp[] {
+/** Scattered rocks of all sizes. */
+function scattered(avoid: readonly RockProp[]): RockProp[] {
   const rng = createRng(SEED + 41);
-  const half: RockProp[] = [];
+  const list: RockProp[] = [];
   let guard = 0;
-  while (half.length < 55 && guard++ < 2000) {
+  while (list.length < 55 && guard++ < 2000) {
     const x = (rng() * 2 - 1) * 260;
     const z = 15 + rng() * 235;
-    const radius = 0.8 + rng() ** 2 * 3.2;
-    const squashY = 0.6 + rng() * 0.3;
+    const r = 0.8 + rng() ** 2 * 3.0;
+    const ry = r * (0.55 + rng() * 0.35);
     const variant = Math.floor(rng() * 3);
     const rotY = rng() * Math.PI * 2;
-    if (isInZone(zoneA, x, z) && rng() < 0.7) continue;
-    if (insideAnyBox(walls, x, z, radius + 1)) continue;
-    const r = radius * squashY;
-    const y = heightAt(x, z) + r * 0.45;
-    half.push({ collider: { center: { x, y, z }, radius: r }, variant, rotY, squashY });
+    if (isInZone(zoneA, x, z) && rng() < 0.8) continue;
+    const tooClose = avoid.some(
+      (o) =>
+        Math.hypot(o.collider.center.x - x, o.collider.center.z - z) < o.collider.radiusXZ + r + 1,
+    );
+    if (tooClose) continue;
+    list.push(rockAt(x, z, r, ry, variant, rotY));
   }
+  return list;
+}
+
+function buildRocks(): RockProp[] {
+  const fixed = [...coverRocks(), ...outcrops()];
+  const half = [...fixed, ...scattered(fixed)];
   const mirrored = half.map((r) => ({
     ...r,
-    collider: { center: mirrorXZ(r.collider.center), radius: r.collider.radius },
+    collider: { ...r.collider, center: mirrorXZ(r.collider.center) },
     rotY: r.rotY + Math.PI,
   }));
   return [...half, ...mirrored];
 }
 
-function buildShrubs(walls: readonly WallProp[]): ShrubProp[] {
+function buildShrubs(rocks: readonly RockProp[]): ShrubProp[] {
   const rng = createRng(SEED + 53);
   const half: ShrubProp[] = [];
   let guard = 0;
   while (half.length < 220 && guard++ < 4000) {
     const x = (rng() * 2 - 1) * 280;
     const z = 2 + rng() * 260;
-    if (insideAnyBox(walls, x, z, 1)) continue;
+    const inRock = rocks.some(
+      (o) => Math.hypot(o.collider.center.x - x, o.collider.center.z - z) < o.collider.radiusXZ,
+    );
+    if (inRock) continue;
     half.push({ pos: { x, y: heightAt(x, z), z }, scale: 0.6 + rng() * 1.0 });
   }
   const mirrored = half.map((s) => ({ pos: mirrorXZ(s.pos), scale: s.scale }));
   return [...half, ...mirrored];
 }
 
-const walls = buildWalls();
+const rocks = buildRocks();
 
 export const DESERT_CANYON: MapDef = {
   id: "desert-canyon",
@@ -172,9 +231,9 @@ export const DESERT_CANYON: MapDef = {
   grid: { minX: -400, maxX: 400, minZ: -320, maxZ: 320, step: 4 },
   heightAt,
   zones: [zoneA, zoneB],
-  walls,
-  rocks: buildRocks(walls),
-  shrubs: buildShrubs(walls),
+  walls: [],
+  rocks,
+  shrubs: buildShrubs(rocks),
   atmosphere: {
     skyZenith: 0x5f8fc4,
     skyHorizon: 0xe6d6bb,

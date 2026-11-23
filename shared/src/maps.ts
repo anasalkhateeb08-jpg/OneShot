@@ -4,7 +4,7 @@
  * Shared because the server needs the same terrain, zones, and colliders as the client.
  */
 import { smoothstep } from "./noise";
-import type { Aabb, Sphere } from "./geometry";
+import type { Aabb, Ellipsoid } from "./geometry";
 import type { GridSpec } from "./terrain";
 import type { Vec3 } from "./messages";
 
@@ -30,14 +30,13 @@ export interface WallProp {
   material: WallMaterial;
 }
 
+/** A rock or boulder. The visual shape is built to match the collider ellipsoid. */
 export interface RockProp {
-  collider: Sphere;
+  collider: Ellipsoid;
   /** Visual variant index. */
   variant: number;
   /** Visual rotation around Y. */
   rotY: number;
-  /** Visual squash on Y (rocks are wider than tall). */
-  squashY: number;
 }
 
 export interface ShrubProp {
