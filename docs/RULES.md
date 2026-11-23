@@ -32,3 +32,9 @@ below apply. When provided, the owner's rules replace them and are implemented l
 - On ANY quality problem (visuals, sound, feel, performance), FIRST search for the professional, industry-standard solution and tools, present the options briefly, THEN build. Never start with the cheap quick path without saying its quality ceiling.
 - If a good solution needs an external tool or asset source (Blender headless via PowerShell, Poly Haven API, ambientCG, Kenney, Sketchfab, photoscanned assets), say so at the start.
 - The owner can say the phrase PRO at any time to trigger this rule.
+
+## SUPER HIGH PRO rule (owner's standing quality bar, overrides the PRO rule above when stricter)
+- The owner asked for the TOP-TIER standard from the start: professional, realistic, the maximum the web allows. Every visual, sound, and feel decision must be judged against that bar, not against 'good enough for a prototype'.
+- Before building, state the quality ceiling of the planned approach. If it is below top tier, choose the professional pipeline instead (Blender headless, photoscanned PBR assets, baked normal maps, proper LODs, real audio design) and say what it needs.
+- Do not ship a visual or sound the AI itself would call placeholder without saying so in the same message.
+- The owner can say SUPER HIGH PRO at any time to trigger this rule.
