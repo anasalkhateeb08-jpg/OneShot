@@ -27,3 +27,8 @@ below apply. When provided, the owner's rules replace them and are implemented l
 
 ## Working rules for the AI
 - Deliver fixes as small patches (only the changed files, only the changed lines). Never rewrite or resend a whole file unless it is new. Owner request: save tokens.
+
+## PRO rule (owner request, binding on every AI session)
+- On ANY quality problem (visuals, sound, feel, performance), FIRST search for the professional, industry-standard solution and tools, present the options briefly, THEN build. Never start with the cheap quick path without saying its quality ceiling.
+- If a good solution needs an external tool or asset source (Blender headless via PowerShell, Poly Haven API, ambientCG, Kenney, Sketchfab, photoscanned assets), say so at the start.
+- The owner can say the phrase PRO at any time to trigger this rule.
