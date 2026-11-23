@@ -34,3 +34,26 @@ body {
   pointer-events: none;
   user-select: none;
 }
+
+.dev-hint {
+  position: fixed;
+  inset-block-end: 24px;
+  inset-inline: 0;
+  margin-inline: auto;
+  inline-size: fit-content;
+  max-inline-size: 90vw;
+  padding: 8px 14px;
+  font:
+    14px/1.4 ui-sans-serif,
+    system-ui,
+    sans-serif;
+  color: #fff;
+  background: rgb(0 0 0 / 55%);
+  border-radius: 6px;
+  pointer-events: none;
+  user-select: none;
+}
+
+.dev-hint[hidden] {
+  display: none;
+}

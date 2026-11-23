@@ -5,3 +5,8 @@ export * from "./ballistics";
 export * from "./wind";
 export * from "./breath";
 export * from "./sway";
+export * from "./noise";
+export * from "./terrain";
+export * from "./maps";
+export * from "./mapDesert";
+export * from "./movement";

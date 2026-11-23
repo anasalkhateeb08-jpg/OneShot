@@ -112,3 +112,26 @@ Defaults chosen by the AI, to be tuned: zone 60 m wide and 30 m deep; zone cente
 Map choice in real duels: random per match by the server, so the queues are not split further.
 Jungle and city are built after phase 2 and before the online duel goes public; their exact phase
 is set with the owner when we get there. Each map gets its own performance measurements.
+
+## D-019 Terrain from a shared procedural height function, not an image file (ACTIVE)
+Deviation from master section 9 ("a heightmap generated from an image file plus noise").
+Each map defines `heightAt(x, z)` in shared code (deterministic noise plus shaped features:
+canyon walls, plateaus for the zones, a broken mid ridge). Both client and server sample it into
+the same 4 m grid (`buildHeightGrid`), the client renders exactly that grid, and collision uses
+the same triangles (`sampleHeight`, `segmentTerrain`). Reasons: identical terrain on both sides
+without shipping an image to the server, zero download size, and exact visual/collision match.
+An artist-made heightmap image can still be added later as one more input to `heightAt`.
+
+## D-020 Controls detail (ACTIVE)
+"One key to return to standing" (master section 2) is X. Keys use physical codes (KeyW...),
+so they work with Arabic and other keyboard layouts. Clicking the game captures the mouse;
+Esc releases it. A short English dev hint shows how to start; it is replaced by localized UI
+in phase 8.
+
+## D-021 Phase 1b scene content (ACTIVE)
+Desert canyon v1: 800 x 640 m terrain grid (4 m cells), distant scenery ring to 3.6 km under
+the fog, procedural sky dome with sun glow and sun disk, one sun with a 2048 shadow map that
+follows the player (60 m range), a hemisphere fill, 26 walls (ruined outpost, spawn covers,
+zone low walls, scattered ruins), 110 rocks, 440 shrubs, all instanced. Surfaces use vertex
+colors for now; photoscanned textures (D-014) replace them in step 1e, after we measure
+performance with the plain version first.
