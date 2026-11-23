@@ -3,6 +3,8 @@ import { PLAYER, sampleHeight, stepMovement } from "@oneshot/shared";
 import type {
   AngleOffset,
   ClientInput,
+  CrateProp,
+  Ellipsoid,
   HeightGrid,
   PlayerZone,
   Posture,
@@ -29,6 +31,8 @@ export class LocalPlayer {
   constructor(
     private readonly zone: PlayerZone,
     private readonly grid: HeightGrid,
+    private readonly solids: readonly Ellipsoid[] = [],
+    private readonly crates: readonly CrateProp[] = [],
   ) {
     const y = sampleHeight(grid, zone.spawnX, zone.spawnZ);
     this.feet = { x: zone.spawnX, y, z: zone.spawnZ };
@@ -43,7 +47,7 @@ export class LocalPlayer {
     this.yaw = input.yaw;
     this.pitch = input.pitch;
     this.posture = input.posture;
-    this.feet = stepMovement(this.feet, input, dt, this.zone, this.grid);
+    this.feet = stepMovement(this.feet, input, dt, this.zone, this.grid, this.solids, this.crates);
     const target = PLAYER.eyeHeight[this.posture];
     this.eye += (target - this.eye) * (1 - Math.exp(-dt / POSTURE_EASE_S));
   }

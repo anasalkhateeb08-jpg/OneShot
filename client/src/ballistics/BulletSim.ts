@@ -1,16 +1,20 @@
 import {
   BALLISTICS,
   BULLET_DT,
+  CRATE,
   distance,
   lerpVec3,
+  normalize,
+  rayBoxSpan,
   segmentHitbox,
   stepBullet,
+  traceCrates,
   traceSegment,
   windAt,
 } from "@oneshot/shared";
 import type { BulletState, HitZone, HitboxPart, Vec3, WorldColliders } from "@oneshot/shared";
 
-export type ImpactKind = "terrain" | "rock" | "wall" | "body";
+export type ImpactKind = "terrain" | "rock" | "wall" | "crate" | "body";
 
 export interface BulletImpact {
   kind: ImpactKind;
@@ -20,6 +24,9 @@ export interface BulletImpact {
   flightS: number;
   zone?: HitZone;
   targetId?: number;
+  /** Crate impacts: which crate, and where the bullet leaves it (for the exit hole). */
+  crateIndex?: number;
+  exitPoint?: Vec3;
 }
 
 export interface FlyingBullet {
@@ -27,6 +34,8 @@ export interface FlyingBullet {
   state: BulletState;
   origin: Vec3;
   ageS: number;
+  /** Crates already passed through (each slows the bullet once). */
+  passedCrates: Set<number>;
 }
 
 export type HitboxProvider = (timeS: number) => Array<{ id: number; parts: HitboxPart[] }>;
@@ -47,7 +56,13 @@ export class BulletSim {
   ) {}
 
   fire(state: BulletState): void {
-    this.bullets.push({ id: this.nextId++, state, origin: state.pos, ageS: 0 });
+    this.bullets.push({
+      id: this.nextId++,
+      state,
+      origin: state.pos,
+      ageS: 0,
+      passedCrates: new Set(),
+    });
   }
 
   /**
@@ -82,6 +97,48 @@ export class BulletSim {
           }
         }
 
+        // Crates: the bullet passes through, loses speed once per crate, and leaves splinters.
+        let slowed = next;
+        for (const hit of traceCrates(this.world, a, c)) {
+          if (hit.t >= bestT || b.passedCrates.has(hit.index)) continue;
+          b.passedCrates.add(hit.index);
+          const entry = lerpVec3(a, c, hit.t);
+          const crate = this.world.crates?.[hit.index];
+          const dir = normalize(next.vel);
+          let exitPoint: Vec3 | undefined;
+          if (crate) {
+            const back = {
+              x: entry.x - dir.x * 0.05,
+              y: entry.y - dir.y * 0.05,
+              z: entry.z - dir.z * 0.05,
+            };
+            const span = rayBoxSpan(back, dir, crate.box);
+            if (span) {
+              exitPoint = {
+                x: back.x + dir.x * span.tOut,
+                y: back.y + dir.y * span.tOut,
+                z: back.z + dir.z * span.tOut,
+              };
+            }
+          }
+          impacts.push({
+            kind: "crate",
+            crateIndex: hit.index,
+            ...(exitPoint ? { exitPoint } : {}),
+            point: entry,
+            distanceM: distance(b.origin, entry),
+            flightS: b.ageS + hit.t * BULLET_DT,
+          });
+          slowed = {
+            pos: slowed.pos,
+            vel: {
+              x: slowed.vel.x * CRATE.speedKeep,
+              y: slowed.vel.y * CRATE.speedKeep,
+              z: slowed.vel.z * CRATE.speedKeep,
+            },
+          };
+        }
+
         if (impact) {
           const point = lerpVec3(a, c, bestT);
           impacts.push({
@@ -92,7 +149,7 @@ export class BulletSim {
           });
           done = true;
         } else {
-          b.state = next;
+          b.state = slowed;
           b.ageS += BULLET_DT;
           if (b.ageS >= BALLISTICS.maxFlightSeconds) done = true;
         }

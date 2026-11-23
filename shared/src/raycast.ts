@@ -3,8 +3,16 @@
  * Used by the rangefinder now, and later by the server for exposure checks and the AI's sight.
  * Shrubs are decoration and do not stop a ray.
  */
-import { addScaled, normalize, segmentAabb, segmentEllipsoid } from "./geometry";
-import type { RockProp, WallProp } from "./maps";
+import {
+  addScaled,
+  normalize,
+  segmentAabb,
+  segmentEllipsoid,
+  segmentOrientedBox,
+} from "./geometry";
+import type { CrateProp, RockProp, WallProp } from "./maps";
+import { segmentRockMesh } from "./rockMesh";
+import type { RockMesh } from "./rockMesh";
 import type { Vec3 } from "./messages";
 import { segmentTerrain } from "./terrain";
 import type { HeightGrid } from "./terrain";
@@ -13,9 +21,16 @@ export interface WorldColliders {
   grid: HeightGrid;
   walls: readonly WallProp[];
   rocks: readonly RockProp[];
+  /**
+   * Exact rock shapes, one per visual variant (a rock uses `variant % length`). When present,
+   * rocks are hit where their real surface is (D-038); otherwise the collider ellipsoid is used.
+   */
+  rockMeshes?: readonly RockMesh[];
+  /** Crates: seen by the rangefinder, but bullets pass through them (see traceCrates). */
+  crates?: readonly CrateProp[];
 }
 
-export type RayHitKind = "terrain" | "wall" | "rock";
+export type RayHitKind = "terrain" | "wall" | "rock" | "crate";
 
 export interface RayHit {
   distance: number;
@@ -26,11 +41,23 @@ export interface RayHit {
 export interface SegmentHit {
   /** Fraction along the segment, 0..1. */
   t: number;
-  kind: RayHitKind;
+  /** Solid things only; crates never stop a bullet. */
+  kind: Exclude<RayHitKind, "crate">;
+}
+
+/** Hit of segment a->b with one rock: the real mesh when known, else its ellipsoid. */
+function segmentRock(world: WorldColliders, a: Vec3, b: Vec3, rock: RockProp): number | null {
+  const meshes = world.rockMeshes;
+  if (meshes && meshes.length > 0) {
+    const mesh = meshes[rock.variant % meshes.length];
+    if (mesh) return segmentRockMesh(a, b, rock, mesh);
+  }
+  return segmentEllipsoid(a, b, rock.collider);
 }
 
 /**
- * First thing hit by segment a->b (terrain, walls, rocks), or null.
+ * First SOLID thing hit by segment a->b (terrain, walls, rocks), or null. Crates are not
+ * included: bullets pass through them (use traceCrates).
  * Used for every bullet substep: the whole SEGMENT is tested, never just its end point.
  */
 export function traceSegment(
@@ -45,12 +72,29 @@ export function traceSegment(
     if (t !== null && (best === null || t < best.t)) best = { t, kind: "wall" };
   }
   for (const r of world.rocks) {
-    const t = segmentEllipsoid(a, b, r.collider);
+    const t = segmentRock(world, a, b, r);
     if (t !== null && (best === null || t < best.t)) best = { t, kind: "rock" };
   }
   const tt = segmentTerrain(world.grid, a, b, terrainStepM);
   if (tt !== null && (best === null || tt < best.t)) best = { t: tt, kind: "terrain" };
   return best;
+}
+
+/** Crates crossed by segment a->b: entry fraction t and crate index, nearest first. */
+export function traceCrates(
+  world: WorldColliders,
+  a: Vec3,
+  b: Vec3,
+): Array<{ t: number; index: number }> {
+  const out: Array<{ t: number; index: number }> = [];
+  const crates = world.crates ?? [];
+  for (let i = 0; i < crates.length; i++) {
+    const c = crates[i];
+    if (!c) continue;
+    const t = segmentOrientedBox(a, b, c.box);
+    if (t !== null) out.push({ t, index: i });
+  }
+  return out.sort((x, y) => x.t - y.t);
 }
 
 /**
@@ -77,10 +121,17 @@ export function raycastWorld(
     }
   }
   for (const r of world.rocks) {
-    const t = segmentEllipsoid(origin, end, r.collider);
+    const t = segmentRock(world, origin, end, r);
     if (t !== null && t < bestT) {
       bestT = t;
       kind = "rock";
+    }
+  }
+  for (const c of world.crates ?? []) {
+    const t = segmentOrientedBox(origin, end, c.box);
+    if (t !== null && t < bestT) {
+      bestT = t;
+      kind = "crate";
     }
   }
   // Only search the terrain up to the nearest prop hit.

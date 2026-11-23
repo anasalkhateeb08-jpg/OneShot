@@ -71,7 +71,9 @@ export class Hud {
   private readonly dot: HTMLDivElement;
   private readonly zoomSteps: HTMLDivElement[] = [];
   private readonly ammo: HTMLDivElement;
-  private readonly impactDot: SVGCircleElement;
+  private readonly impactDot: SVGGElement;
+  private readonly impactHalo: SVGCircleElement;
+  private readonly impactCore: SVGCircleElement;
   private readonly flashEl: HTMLDivElement;
   private flashUntil = 0;
   private lastAmmo = "";
@@ -88,13 +90,12 @@ export class Hud {
     div("hud-scope-ring", this.scope);
     this.reticle = svg("svg", { class: "hud-reticle", preserveAspectRatio: "xMidYMid meet" });
     this.buildReticle(this.reticle);
-    this.impactDot = svg("circle", {
-      r: 0.22,
-      fill: "#2bff5c",
-      stroke: "#003b10",
-      "stroke-width": 1,
-      "vector-effect": "non-scaling-stroke",
-    });
+    // Practice impact dot (owner request): fluorescent, glowing, gently pulsing, hard to miss.
+    this.impactDot = svg("g", { class: "hud-impact" });
+    this.impactHalo = svg("circle", { r: 0.75, class: "hud-impact-halo" });
+    this.impactCore = svg("circle", { r: 0.32, class: "hud-impact-core" });
+    this.impactDot.appendChild(this.impactHalo);
+    this.impactDot.appendChild(this.impactCore);
     this.impactDot.style.display = "none";
     this.reticle.appendChild(this.impactDot);
     this.scope.appendChild(this.reticle);
@@ -143,14 +144,19 @@ export class Hud {
       if (vb !== this.lastViewBox) {
         this.reticle.setAttribute("viewBox", vb);
         this.lastViewBox = vb;
+        // Keep the impact dot a fixed size on screen (core 6 px, halo 15 px) at every zoom.
+        const pxPerMil = window.innerHeight / (2 * halfH);
+        this.impactCore.setAttribute("r", (6 / pxPerMil).toFixed(4));
+        this.impactHalo.setAttribute("r", (15 / pxPerMil).toFixed(4));
       }
       this.lungFill.style.inlineSize = `${Math.round(s.lung * 100)}%`;
       this.lungFill.dataset.mode = s.breathMode;
       this.windArrow.style.transform = `rotate(${s.windRelativeRad}rad)`;
       this.windText.textContent = `${s.windSpeed.toFixed(1)} m/s`;
       if (s.impactMils) {
-        this.impactDot.setAttribute("cx", s.impactMils.right.toFixed(3));
-        this.impactDot.setAttribute("cy", (-s.impactMils.up).toFixed(3));
+        const x = s.impactMils.right.toFixed(3);
+        const y = (-s.impactMils.up).toFixed(3);
+        this.impactDot.setAttribute("transform", `translate(${x} ${y})`);
         this.impactDot.style.display = "";
       } else {
         this.impactDot.style.display = "none";

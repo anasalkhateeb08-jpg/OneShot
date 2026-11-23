@@ -28,7 +28,10 @@ import { BulletSim } from "./ballistics/BulletSim";
 import type { BulletImpact } from "./ballistics/BulletSim";
 import { FixedStepLoop } from "./core/Loop";
 import { KeyboardMouseInput } from "./core/KeyboardMouseInput";
+import { loadAssets } from "./core/Assets";
 import { GameRenderer } from "./core/Renderer";
+import { AdaptiveQuality, QUALITY_PRESETS } from "./gfx/Quality";
+import type { QualityLevel } from "./gfx/Quality";
 import { Breath } from "./player/Breath";
 import { LocalPlayer } from "./player/LocalPlayer";
 import { Rangefinder } from "./player/Rangefinder";
@@ -47,6 +50,8 @@ const BOLT_SOUND_DELAY_S = 0.45;
 const HEARTBEAT_INTERVAL_S = 0.85;
 /** Practice mode: the green impact dot and the coach exist ONLY here (D-028), never in duels. */
 const PRACTICE = true;
+/** The practice dot works at any distance beyond this (was 20 m, which hid it in tight gaps). */
+const MIN_COACH_DISTANCE_M = 3;
 
 /** Random 32-bit seed (practice mode; in duels the server sends the match seed). */
 const randomSeed = (): number => Math.floor(Math.random() * 0xffffffff) >>> 0;
@@ -86,11 +91,41 @@ async function start(): Promise<void> {
   const gfx = await GameRenderer.create(app, { forceWebGL: params.get("gfx") === "webgl" });
 
   const map = DESERT_CANYON;
-  const world = buildWorld(gfx.scene, map);
-  const colliders = { grid: world.grid, walls: map.walls, rocks: map.rocks };
   const zone = map.zones[0];
+  if (overlay) overlay.textContent = "Loading assets...";
+  const assets = await loadAssets();
+  const world = buildWorld(gfx.scene, map, assets, zone);
+  const colliders = {
+    grid: world.grid,
+    walls: map.walls,
+    rocks: map.rocks,
+    crates: map.crates,
+    rockMeshes: assets.rocks.map((r) => r.mesh),
+  };
+
+  // Graphics quality: automatic by measured frame rate (D-016); F9 cycles it by hand.
+  const requested = params.get("q");
+  const initialQuality: QualityLevel =
+    requested === "low" || requested === "medium" || requested === "high" ? requested : "high";
+  const quality = new AdaptiveQuality(initialQuality, (level) => {
+    const preset = QUALITY_PRESETS[level];
+    gfx.setResolutionScale(preset.resolutionScale);
+    world.setQuality(preset);
+  });
+  if (requested) quality.auto = false;
+  window.addEventListener("keydown", (e) => {
+    if (e.code === "F9") {
+      e.preventDefault();
+      quality.cycle();
+    }
+  });
   const input = new KeyboardMouseInput(gfx.canvas, zone.facingYaw);
-  const player = new LocalPlayer(zone, world.grid);
+  const player = new LocalPlayer(
+    zone,
+    world.grid,
+    map.rocks.map((r) => r.collider),
+    map.crates,
+  );
   const breath = new Breath();
   const scope = new ScopeView(scopeZoomRange(map));
   const rangefinder = new Rangefinder(colliders);
@@ -119,6 +154,7 @@ async function start(): Promise<void> {
   let simTime = 0;
   let zeroIndex: 0 | 1 | 2 | 3 = 0;
   let scoped = false;
+  let creeping = false;
   let rifle = initialRifle();
   let recoil = 0;
   let nextHeartbeat = 0;
@@ -126,10 +162,14 @@ async function start(): Promise<void> {
   let elapsed = 0;
 
   const currentSway = (): AngleOffset =>
-    swayOffset(simTime, playerSeed, swayAmplitudes(player.posture, breath.state, false));
+    swayOffset(simTime, playerSeed, swayAmplitudes(player.posture, breath.state, false, creeping));
 
   const onImpact = (impact: BulletImpact): void => {
     tracers.impact(impact.kind, impact.point, simTime);
+    if (impact.kind === "crate" && impact.crateIndex !== undefined) {
+      world.perforateCrate(impact.crateIndex, impact.point, impact.exitPoint);
+      if (impact.exitPoint) tracers.impact("crate", impact.exitPoint, simTime);
+    }
     const eye = player.eyePosition(1);
     const heardFrom = Math.hypot(
       impact.point.x - eye.x,
@@ -160,6 +200,7 @@ async function start(): Promise<void> {
       update: (dt) => {
         const cmd = input.poll(dt);
         scoped = cmd.scoped;
+        creeping = cmd.scoped && (cmd.moveX !== 0 || cmd.moveZ !== 0);
         zeroIndex = cmd.zeroIndex;
         player.update(cmd, dt);
         breath.update(cmd.holdBreath, cmd.scoped, dt);
@@ -242,7 +283,7 @@ async function start(): Promise<void> {
               simTime,
               matchSeed,
             );
-            if (aimed.distanceM !== null && aimed.distanceM > 20) {
+            if (aimed.distanceM !== null && aimed.distanceM > MIN_COACH_DISTANCE_M) {
               const p = predictImpact(eye, aimYaw, aimPitch, zeroIndex, aimed.distanceM, (dt) =>
                 windAt(simTime + dt, matchSeed),
               );
@@ -280,13 +321,15 @@ async function start(): Promise<void> {
         });
 
         if (hint) hint.hidden = input.isLocked();
+        quality.sample(frameSeconds);
         frames += 1;
         elapsed += frameSeconds;
         if (elapsed >= OVERLAY_REFRESH_S && overlay) {
           const fps = Math.round(frames / elapsed);
           const { drawCalls, triangles } = gfx.stats();
           overlay.textContent =
-            `${gfx.backend} | ${fps} FPS | ${drawCalls} calls | ${triangles} tris | ` +
+            `${gfx.backend} | ${quality.level}${quality.auto ? " auto" : ""} | ${fps} FPS | ` +
+            `${drawCalls} calls | ${triangles} tris | ` +
             `x ${player.feet.x.toFixed(1)} z ${player.feet.z.toFixed(1)}`;
           frames = 0;
           elapsed = 0;

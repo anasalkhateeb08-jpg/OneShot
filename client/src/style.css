@@ -340,3 +340,29 @@ body {
   white-space: nowrap;
   pointer-events: none;
 }
+
+/* Fluorescent practice impact dot (owner request). */
+.hud-impact-core {
+  fill: #39ff14;
+  stroke: #eaffde;
+  stroke-width: 1px;
+  vector-effect: non-scaling-stroke;
+  filter: drop-shadow(0 0 3px #39ff14) drop-shadow(0 0 7px #39ff14);
+}
+
+.hud-impact-halo {
+  fill: rgb(57 255 20 / 22%);
+  stroke: #39ff14;
+  stroke-width: 1.5px;
+  vector-effect: non-scaling-stroke;
+  animation: hud-impact-pulse 0.9s ease-in-out infinite alternate;
+}
+
+@keyframes hud-impact-pulse {
+  from {
+    opacity: 0.35;
+  }
+  to {
+    opacity: 1;
+  }
+}

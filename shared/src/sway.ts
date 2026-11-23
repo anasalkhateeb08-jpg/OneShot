@@ -25,9 +25,11 @@ export function swayAmplitudes(
   posture: Posture,
   breath: BreathState,
   limbWounded: boolean,
+  creeping = false,
 ): SwayAmplitudes {
   const postureMul = PLAYER.swayMultiplier[posture];
-  const woundMul = limbWounded ? PLAYER.limbWoundSwayFactor : 1;
+  const woundMul =
+    (limbWounded ? PLAYER.limbWoundSwayFactor : 1) * (creeping ? PLAYER.creepSwayFactor : 1);
   return {
     amplitudeRad: SWAY.baseAmplitudeRad * postureMul * breath.swayScale * woundMul,
     breathingRad: SWAY.breathAmplitudeRad * postureMul * breath.breathingWeight * woundMul,

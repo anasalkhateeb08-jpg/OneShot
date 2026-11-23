@@ -180,3 +180,75 @@ export function createRng(seed: number): () => number {
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   };
 }
+
+/**
+ * Box rotated around the vertical axis (crates). `center` is the middle of the box;
+ * `half` holds the half sizes along the box's own X, Y, Z axes.
+ */
+export interface OrientedBox {
+  center: Vec3;
+  half: Vec3;
+  rotY: number;
+}
+
+/** World offset (dx, dz) to the box's own axes (inverse of a rotation by rotY around +Y). */
+export function toBoxLocal(rotY: number, dx: number, dz: number): { x: number; z: number } {
+  const c = Math.cos(rotY);
+  const s = Math.sin(rotY);
+  return { x: dx * c - dz * s, z: dx * s + dz * c };
+}
+
+/**
+ * First intersection of segment a->b with an oriented box (the segment is moved into the box's
+ * own frame, then tested against an axis-aligned box).
+ * @returns t in [0, 1] (0 if a is inside), or null if no hit.
+ */
+export function segmentOrientedBox(a: Vec3, b: Vec3, box: OrientedBox): number | null {
+  const la = toBoxLocal(box.rotY, a.x - box.center.x, a.z - box.center.z);
+  const lb = toBoxLocal(box.rotY, b.x - box.center.x, b.z - box.center.z);
+  return segmentAabb(
+    { x: la.x, y: a.y - box.center.y, z: la.z },
+    { x: lb.x, y: b.y - box.center.y, z: lb.z },
+    {
+      min: { x: -box.half.x, y: -box.half.y, z: -box.half.z },
+      max: { x: box.half.x, y: box.half.y, z: box.half.z },
+    },
+  );
+}
+
+/**
+ * Where an infinite ray crosses an oriented box: distances along the (unit) direction at which
+ * it enters and leaves. Used to place bullet holes on a crate's entry and exit faces.
+ * @returns null if the ray misses; tIn may be negative if the origin is inside the box.
+ */
+export function rayBoxSpan(
+  origin: Vec3,
+  dir: Vec3,
+  box: OrientedBox,
+): { tIn: number; tOut: number } | null {
+  const o = toBoxLocal(box.rotY, origin.x - box.center.x, origin.z - box.center.z);
+  const d = toBoxLocal(box.rotY, dir.x, dir.z);
+  const lo = [-box.half.x, -box.half.y, -box.half.z];
+  const hi = [box.half.x, box.half.y, box.half.z];
+  const start = [o.x, origin.y - box.center.y, o.z];
+  const delta = [d.x, dir.y, d.z];
+  let tIn = Number.NEGATIVE_INFINITY;
+  let tOut = Number.POSITIVE_INFINITY;
+  for (let i = 0; i < 3; i++) {
+    const s0 = start[i] ?? 0;
+    const dv = delta[i] ?? 0;
+    const l = lo[i] ?? 0;
+    const h = hi[i] ?? 0;
+    if (Math.abs(dv) < 1e-12) {
+      if (s0 < l || s0 > h) return null;
+      continue;
+    }
+    let t1 = (l - s0) / dv;
+    let t2 = (h - s0) / dv;
+    if (t1 > t2) [t1, t2] = [t2, t1];
+    if (t1 > tIn) tIn = t1;
+    if (t2 < tOut) tOut = t2;
+    if (tIn > tOut) return null;
+  }
+  return { tIn, tOut };
+}

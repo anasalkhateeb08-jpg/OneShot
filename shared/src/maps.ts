@@ -4,7 +4,7 @@
  * Shared because the server needs the same terrain, zones, and colliders as the client.
  */
 import { smoothstep } from "./noise";
-import type { Aabb, Ellipsoid } from "./geometry";
+import type { Aabb, Ellipsoid, OrientedBox } from "./geometry";
 import type { GridSpec } from "./terrain";
 import type { Vec3 } from "./messages";
 
@@ -39,6 +39,18 @@ export interface RockProp {
   rotY: number;
 }
 
+/**
+ * A broken wooden crate (D-032). It hides a player but does NOT stop a bullet: the bullet
+ * passes through and slows down. It does block walking.
+ */
+export interface CrateProp {
+  box: OrientedBox;
+  /** Small visual lean (radians, <= 0.04); the collider stays upright. */
+  lean: number;
+  /** Visual variant: 0 intact, 1 broken. */
+  variant: number;
+}
+
 export interface ShrubProp {
   pos: Vec3;
   scale: number;
@@ -70,6 +82,7 @@ export interface MapDef {
   zones: readonly [PlayerZone, PlayerZone];
   walls: readonly WallProp[];
   rocks: readonly RockProp[];
+  crates: readonly CrateProp[];
   shrubs: readonly ShrubProp[];
   atmosphere: Atmosphere;
 }
@@ -117,5 +130,14 @@ export function mirrorBox(b: Aabb): Aabb {
   return {
     min: { x: -b.max.x, y: b.min.y, z: -b.max.z },
     max: { x: -b.min.x, y: b.max.y, z: -b.min.z },
+  };
+}
+
+/** Mirrors a crate through the map center. */
+export function mirrorCrate(c: CrateProp): CrateProp {
+  return {
+    ...c,
+    box: { ...c.box, center: mirrorXZ(c.box.center), rotY: c.box.rotY + Math.PI },
+    lean: -c.lean,
   };
 }

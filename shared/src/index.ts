@@ -1,5 +1,7 @@
 export * from "./constants";
 export * from "./messages";
+export * from "./crates";
+export * from "./effects";
 export * from "./geometry";
 export * from "./ballistics";
 export * from "./wind";
@@ -11,6 +13,7 @@ export * from "./maps";
 export * from "./mapDesert";
 export * from "./movement";
 export * from "./raycast";
+export * from "./rockMesh";
 export * from "./scope";
 export * from "./hitbox";
 export * from "./rifle";

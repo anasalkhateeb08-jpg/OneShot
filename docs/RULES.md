@@ -24,3 +24,6 @@ below apply. When provided, the owner's rules replace them and are implemented l
 ## Where these live in code
 
 `shared/src/constants.ts`: `PLAYER`, `MATCH`, `EXPOSURE`, `TRIALS`, `ABUSE`.
+
+## Working rules for the AI
+- Deliver fixes as small patches (only the changed files, only the changed lines). Never rewrite or resend a whole file unless it is new. Owner request: save tokens.

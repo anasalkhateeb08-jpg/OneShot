@@ -1,6 +1,8 @@
 import * as THREE from "three/webgpu";
 import { buildHeightGrid } from "@oneshot/shared";
-import type { HeightGrid, MapDef } from "@oneshot/shared";
+import type { HeightGrid, MapDef, PlayerZone, Vec3 } from "@oneshot/shared";
+import type { GameAssets } from "../core/Assets";
+import type { QualityPreset } from "../gfx/Quality";
 import { createProps } from "./Props";
 import { Sky } from "./Sky";
 import { createHorizonMesh, createTerrainMesh } from "./Terrain";
@@ -13,6 +15,10 @@ export interface World {
   grid: HeightGrid;
   /** Call once per frame with the camera position (sky follows, shadows follow the player). */
   update(cameraPosition: THREE.Vector3): void;
+  /** Applies a graphics quality preset (shadows, shrubs). */
+  setQuality(preset: QualityPreset): void;
+  /** A bullet went through a crate: make see-through holes where it entered and left. */
+  perforateCrate(index: number, entry: Vec3, exit?: Vec3): void;
   dispose(): void;
 }
 
@@ -20,7 +26,12 @@ export interface World {
  * Builds a whole map into the scene from its data definition (D-018):
  * atmosphere (fog, sky, sun, fill), terrain, distant scenery, and props.
  */
-export function buildWorld(scene: THREE.Scene, map: MapDef): World {
+export function buildWorld(
+  scene: THREE.Scene,
+  map: MapDef,
+  assets: GameAssets,
+  playerZone: PlayerZone,
+): World {
   const atm = map.atmosphere;
   const grid = buildHeightGrid(map.grid, map.heightAt);
 
@@ -54,12 +65,12 @@ export function buildWorld(scene: THREE.Scene, map: MapDef): World {
   scene.add(sun);
   scene.add(sun.target);
 
-  const terrain = createTerrainMesh(grid, atm);
+  const terrain = createTerrainMesh(grid, atm, assets.ground);
   scene.add(terrain);
   const horizon = createHorizonMesh(map.heightAt, atm);
   scene.add(horizon);
 
-  const props = createProps(map);
+  const props = createProps(map, assets.rocks, playerZone);
   scene.add(props.group);
 
   return {
@@ -69,6 +80,11 @@ export function buildWorld(scene: THREE.Scene, map: MapDef): World {
       // The 2048 shadow map covers only a near range around the player (master section 9).
       sun.target.position.copy(cameraPosition);
       sun.position.copy(cameraPosition).addScaledVector(sunDir, SUN_DISTANCE_M);
+    },
+    perforateCrate: (index, entry, exit) => props.perforateCrate(index, entry, exit),
+    setQuality(preset: QualityPreset): void {
+      sun.castShadow = preset.shadows;
+      if (props.shrubs) props.shrubs.visible = preset.shrubs;
     },
     dispose(): void {
       sky.dispose();

@@ -66,4 +66,10 @@ describe("sway", () => {
     expect(Math.abs(o.yaw)).toBe(0);
     expect(Math.abs(o.pitch)).toBe(0);
   });
+
+  it("doubles while creeping with the scope up (D-035)", () => {
+    const still = swayAmplitudes("prone", initialBreath(), false);
+    const creep = swayAmplitudes("prone", initialBreath(), false, true);
+    expect(creep.amplitudeRad).toBeCloseTo(still.amplitudeRad * 2, 12);
+  });
 });

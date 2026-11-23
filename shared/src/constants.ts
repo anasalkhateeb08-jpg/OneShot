@@ -46,6 +46,8 @@ export const SCOPE = {
   /** Highest zoom = lowest zoom x this. */
   maxOverMinZoom: 3.5,
   zoomLevels: 6,
+  /** Creeping while scoped moves at this fraction of the posture speed (D-035). */
+  creepSpeedFactor: 0.25,
 } as const;
 
 /** Rangefinder (added in phase 1c, D-022). Local only; the opponent never sees it. */
@@ -63,10 +65,15 @@ export const RIFLE = {
   zeroing: [100, 200, 300, 400],
 } as const;
 
+/** Wooden crates (D-032): a bullet passes through and keeps this fraction of its speed. */
+export const CRATE = { speedKeep: 0.67 } as const;
+
 export const PLAYER = {
   eyeHeight: { stand: 1.7, crouch: 1.0, prone: 0.4 },
   speed: { stand: 3.5, crouch: 1.8, prone: 0.8 },
   swayMultiplier: { stand: 1.0, crouch: 0.5, prone: 0.15 },
+  /** Sway is multiplied by this while creeping with the scope up (D-035). */
+  creepSwayFactor: 2,
   breathHoldSwayFactor: 0.15,
   breathHoldFovFactor: 0.85,
   lungDrainPerS: 0.125,

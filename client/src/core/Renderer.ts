@@ -40,6 +40,11 @@ export class GameRenderer {
     return new GameRenderer(renderer, backend);
   }
 
+  /** Render resolution relative to the device pixel ratio (adaptive quality, master 9). */
+  setResolutionScale(scale: number): void {
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, MAX_PIXEL_RATIO) * scale);
+  }
+
   get canvas(): HTMLCanvasElement {
     return this.renderer.domElement;
   }

@@ -4,6 +4,7 @@ import {
   directionFromYawPitch,
   segmentAabb,
   segmentEllipsoid,
+  segmentOrientedBox,
   segmentSphere,
   wrapAngle,
   yawPitchFromDirection,
@@ -89,5 +90,16 @@ describe("createRng", () => {
       expect(v).toBeGreaterThanOrEqual(0);
       expect(v).toBeLessThan(1);
     }
+  });
+
+  it("hits a rotated box only where the rotated box is (segmentOrientedBox)", () => {
+    const box = { center: { x: 0, y: 1, z: 0 }, half: { x: 2, y: 1, z: 0.5 }, rotY: Math.PI / 2 };
+    // Rotated a quarter turn: long side along Z (z from -2 to 2). A shot along X at z=2.5
+    // misses, a shot along X at z=1.5 hits, and a shot along Z hits the near end.
+    expect(segmentOrientedBox({ x: -5, y: 1, z: 2.5 }, { x: 5, y: 1, z: 2.5 }, box)).toBeNull();
+    expect(segmentOrientedBox({ x: -5, y: 1, z: 1.5 }, { x: 5, y: 1, z: 1.5 }, box)).not.toBeNull();
+    const t = segmentOrientedBox({ x: 0, y: 1, z: -5 }, { x: 0, y: 1, z: 5 }, box);
+    expect(t).not.toBeNull();
+    expect((t ?? 0) * 10).toBeCloseTo(3, 6);
   });
 });

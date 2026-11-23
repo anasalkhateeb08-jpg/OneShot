@@ -47,6 +47,38 @@ describe("desert canyon map", () => {
     expect(map.rocks.length).toBeGreaterThan(100);
   });
 
+  it("has mirrored crates that do not overlap rocks (D-032, D-033)", () => {
+    expect(map.crates.length).toBeGreaterThan(40);
+    expect(map.crates.length % 2).toBe(0);
+    const half = map.crates.length / 2;
+    for (let i = 0; i < half; i++) {
+      const c = map.crates[i];
+      const m = map.crates[i + half];
+      if (!c || !m) throw new Error("missing crate");
+      expect(m.box.center.x + c.box.center.x).toBeCloseTo(0, 9);
+      expect(m.box.center.z + c.box.center.z).toBeCloseTo(0, 9);
+      expect(m.box.center.y).toBe(c.box.center.y);
+    }
+    // No crate sits inside a rock's footprint (stacked crates share the lower crate's spot).
+    for (const c of map.crates) {
+      for (const r of map.rocks) {
+        const d = Math.hypot(
+          r.collider.center.x - c.box.center.x,
+          r.collider.center.z - c.box.center.z,
+        );
+        expect(d).toBeGreaterThan(r.collider.radiusXZ);
+      }
+    }
+  });
+
+  it("keeps the spawn lane free of crates", () => {
+    for (const c of map.crates) {
+      const dx = Math.abs(c.box.center.x - zoneA.spawnX);
+      const dz = Math.abs(c.box.center.z - zoneA.spawnZ);
+      expect(dx < 4 && dz < 4).toBe(false);
+    }
+  });
+
   it("puts the two spawns at least 350 m apart (master section 9)", () => {
     const a = { x: zoneA.spawnX, y: 0, z: zoneA.spawnZ };
     const b = { x: zoneB.spawnX, y: 0, z: zoneB.spawnZ };

@@ -6,8 +6,8 @@
  * The sun comes from the side (+X), so it is side-light for both players.
  */
 import { createRng, normalize } from "./geometry";
-import { isInZone, mirrorXZ, zoneBlend } from "./maps";
-import type { MapDef, PlayerZone, RockProp, ShrubProp } from "./maps";
+import { isInZone, mirrorCrate, mirrorXZ, zoneBlend } from "./maps";
+import type { CrateProp, MapDef, PlayerZone, RockProp, ShrubProp } from "./maps";
 import { fbm2, smoothstep } from "./noise";
 
 const SEED = 7301;
@@ -206,6 +206,80 @@ function buildRocks(): RockProp[] {
   return [...half, ...mirrored];
 }
 
+const SMALL_CRATE = { x: 0.4, y: 0.4, z: 0.4 };
+
+/** Crate sizes (half extents, meters): small, medium, long. */
+const CRATE_SIZES: ReadonlyArray<{ x: number; y: number; z: number }> = [
+  SMALL_CRATE,
+  { x: 0.55, y: 0.5, z: 0.55 },
+  { x: 1.0, y: 0.45, z: 0.45 },
+];
+
+/** Z of each crate row in the north half (rows run along X; the first is inside the zone). */
+const CRATE_ROWS_Z: readonly number[] = [ZONE_CENTER_Z - 9, 172, 150, 128, 104, 78, 52];
+
+/**
+ * A ruined yard (D-033): crates in loose rows with gaps, some single and low (exposed), some
+ * stacked (hiding). Crates hide a player but bullets pass through them (D-032). Built for the
+ * north half; the mirror adds the south half, so both players see the same yard.
+ */
+function buildCrates(rocks: readonly RockProp[]): CrateProp[] {
+  const rng = createRng(SEED + 71);
+  const half: CrateProp[] = [];
+  const blocked = (x: number, z: number, margin: number): boolean =>
+    rocks.some(
+      (o) =>
+        Math.hypot(o.collider.center.x - x, o.collider.center.z - z) < o.collider.radiusXZ + margin,
+    );
+  CRATE_ROWS_Z.forEach((rowZ, row) => {
+    const inZone = row === 0;
+    const span = inZone ? ZONE_HALF_WIDTH - 3 : 120;
+    let x = -span + rng() * 4;
+    while (x < span) {
+      // Gaps keep part of every row open (exposed ground between the cover).
+      if (rng() < 0.35) {
+        x += 5 + rng() * 6;
+        continue;
+      }
+      const z = rowZ + (rng() - 0.5) * 3;
+      const sizeIndex = Math.floor(rng() * CRATE_SIZES.length);
+      const size = CRATE_SIZES[sizeIndex] ?? SMALL_CRATE;
+      // Keep the spawn lane free of crates so the player is not boxed in at the start.
+      const nearSpawn = inZone && Math.abs(x) < 6;
+      if (!nearSpawn && !blocked(x, z, 1.8)) {
+        const rotY = rng() < 0.5 ? (rng() - 0.5) * 0.5 : Math.PI / 2 + (rng() - 0.5) * 0.5;
+        const ground = heightAt(x, z);
+        const variant = rng() < 0.45 ? 1 : 0;
+        const lean = (rng() - 0.5) * 0.08;
+        half.push({
+          box: {
+            center: { x, y: ground + size.y - 0.05, z },
+            half: { x: size.x, y: size.y, z: size.z },
+            rotY,
+          },
+          lean,
+          variant,
+        });
+        // About one crate in three carries a second crate on top (a taller hiding spot).
+        if (rng() < 0.33) {
+          const top = SMALL_CRATE;
+          half.push({
+            box: {
+              center: { x: x + (rng() - 0.5) * 0.2, y: ground + size.y * 2 + top.y - 0.1, z },
+              half: { x: top.x, y: top.y, z: top.z },
+              rotY: rotY + (rng() - 0.5) * 0.6,
+            },
+            lean: (rng() - 0.5) * 0.08,
+            variant: 1,
+          });
+        }
+      }
+      x += 3.5 + rng() * 7;
+    }
+  });
+  return [...half, ...half.map(mirrorCrate)];
+}
+
 function buildShrubs(rocks: readonly RockProp[]): ShrubProp[] {
   const rng = createRng(SEED + 53);
   const half: ShrubProp[] = [];
@@ -233,6 +307,7 @@ export const DESERT_CANYON: MapDef = {
   zones: [zoneA, zoneB],
   walls: [],
   rocks,
+  crates: buildCrates(rocks),
   shrubs: buildShrubs(rocks),
   atmosphere: {
     skyZenith: 0x5f8fc4,

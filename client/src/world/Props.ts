@@ -1,6 +1,8 @@
 import * as THREE from "three/webgpu";
 import { createRng, fbm2 } from "@oneshot/shared";
-import type { MapDef, WallMaterial } from "@oneshot/shared";
+import { CRATE_FACES, crateFaceAt } from "@oneshot/shared";
+import type { MapDef, PlayerZone, RockProp, Vec3, WallMaterial } from "@oneshot/shared";
+import type { RockAsset } from "../core/Assets";
 
 const WALL_COLORS: Record<WallMaterial, number> = {
   mudbrick: 0xb38f66,
@@ -9,13 +11,15 @@ const WALL_COLORS: Record<WallMaterial, number> = {
 };
 
 const SHRUB_COLOR = 0x6c6a3c;
-const ROCK_VARIANTS = 3;
+const PROCEDURAL_ROCK_VARIANTS = 3;
+/** Rocks closer than this to the player's zone cast shadows (the shadow map only covers ~60 m). */
+const NEAR_ROCK_M = 90;
 
 /**
- * A rock shape: an icosphere pushed in and out by noise (at most 12%), faceted for a hard
- * look. Scaled to the collider ellipsoid, so what you see is close to what stops a bullet.
+ * Fallback rock shape when no photoscanned rock is available: an icosphere pushed in and out by
+ * noise (at most 12%), faceted. Already a unit shape, like the normalized photoscanned rocks.
  */
-function rockGeometry(variant: number): THREE.BufferGeometry {
+function proceduralRockGeometry(variant: number): THREE.BufferGeometry {
   const geometry = new THREE.IcosahedronGeometry(1, 2);
   const pos = geometry.getAttribute("position");
   const seed = 1000 + variant * 77;
@@ -31,11 +35,123 @@ function rockGeometry(variant: number): THREE.BufferGeometry {
   return geometry;
 }
 
+/** Size of one crate face in the texture atlas (3 x 2 faces per crate). */
+const CELL = 128;
+/** Visual bullet hole radius in meters (bigger than a real bullet so it can be seen at range). */
+const HOLE_RADIUS_M = 0.07;
+/** Most crates that can carry holes at once (each gets its own small textures). */
+const MAX_PERFORATED = 80;
+
 /**
- * Builds all map props as InstancedMesh (one draw call per kind, master section 9):
- * walls (per material), rocks (per shape variant), and shrubs.
+ * A unit box with its own UVs: each face uses its own cell of a 3 x 2 atlas, so a bullet hole
+ * painted on one face never shows on another.
  */
-export function createProps(map: MapDef): { group: THREE.Group; dispose(): void } {
+function crateGeometry(): THREE.BufferGeometry {
+  const positions: number[] = [];
+  const normals: number[] = [];
+  const uvs: number[] = [];
+  const index: number[] = [];
+  CRATE_FACES.forEach((f, face) => {
+    const cx = face % 3;
+    const cy = Math.floor(face / 3);
+    const corners: Array<[number, number]> = [
+      [0, 0],
+      [1, 0],
+      [1, 1],
+      [0, 1],
+    ];
+    const base = positions.length / 3;
+    for (const [fu, fv] of corners) {
+      for (let k = 0; k < 3; k++) {
+        positions.push(
+          (f.n[k] ?? 0) * 0.5 + (f.u[k] ?? 0) * (fu - 0.5) + (f.v[k] ?? 0) * (fv - 0.5),
+        );
+        normals.push(f.n[k] ?? 0);
+      }
+      uvs.push((cx + fu) / 3, 1 - (cy + 1 - fv) / 2);
+    }
+    index.push(base, base + 1, base + 2, base, base + 2, base + 3);
+  });
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+  geometry.setAttribute("normal", new THREE.Float32BufferAttribute(normals, 3));
+  geometry.setAttribute("uv", new THREE.Float32BufferAttribute(uvs, 2));
+  geometry.setIndex(index);
+  return geometry;
+}
+
+/**
+ * Weathered plank atlas drawn on a canvas (no image file needed). Pale wood with a darker frame
+ * and clear board gaps, so a crate reads as a crate and is easy to tell from rocks at range.
+ */
+function woodAtlasCanvas(): HTMLCanvasElement {
+  const canvas = document.createElement("canvas");
+  canvas.width = CELL * 3;
+  canvas.height = CELL * 2;
+  const g = canvas.getContext("2d");
+  if (!g) return canvas;
+  const rng = createRng(9001);
+  const boards = 5;
+  const h = CELL / boards;
+  for (let face = 0; face < 6; face++) {
+    const ox = (face % 3) * CELL;
+    const oy = Math.floor(face / 3) * CELL;
+    for (let i = 0; i < boards; i++) {
+      const light = 178 + Math.floor(rng() * 40);
+      g.fillStyle = `rgb(${light}, ${Math.floor(light * 0.82)}, ${Math.floor(light * 0.58)})`;
+      g.fillRect(ox, oy + i * h, CELL, h);
+      for (let k = 0; k < 5; k++) {
+        const y = oy + i * h + rng() * h;
+        g.strokeStyle = `rgba(80, 52, 26, ${0.1 + rng() * 0.15})`;
+        g.beginPath();
+        g.moveTo(ox, y);
+        g.lineTo(ox + CELL, y + (rng() - 0.5) * 3);
+        g.stroke();
+      }
+      g.fillStyle = "rgba(60, 38, 18, 0.7)";
+      g.fillRect(ox, oy + i * h, CELL, 2);
+    }
+    // Darker frame around the face, and a diagonal brace.
+    g.strokeStyle = "rgb(112, 78, 44)";
+    g.lineWidth = 12;
+    g.strokeRect(ox + 6, oy + 6, CELL - 12, CELL - 12);
+    g.lineWidth = 9;
+    g.beginPath();
+    g.moveTo(ox + 10, oy + 10);
+    g.lineTo(ox + CELL - 10, oy + CELL - 10);
+    g.stroke();
+  }
+  return canvas;
+}
+
+function atlasTexture(canvas: HTMLCanvasElement, data: boolean): THREE.CanvasTexture {
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = data ? THREE.NoColorSpace : THREE.SRGBColorSpace;
+  return texture;
+}
+
+export interface PropsView {
+  group: THREE.Group;
+  /** Shrubs can be hidden on the Low quality preset. */
+  shrubs: THREE.Object3D | null;
+  /**
+   * A bullet went through crate `index`: punch a hole in the entry face and (when known) the
+   * exit face, so the world behind the crate can be seen through it.
+   */
+  perforateCrate(index: number, entry: Vec3, exit?: Vec3): void;
+  dispose(): void;
+}
+
+/**
+ * Builds all map props as InstancedMesh (one draw call per kind and variant, master section 9).
+ * Rocks use photoscanned models when available (D-014), scaled to their collider ellipsoids so
+ * what you see is what stops a bullet. Rocks near the player cast shadows; far ones do not.
+ */
+export function createProps(
+  map: MapDef,
+  rockAssets: readonly RockAsset[],
+  playerZone: PlayerZone,
+): PropsView {
   const group = new THREE.Group();
   const disposables: Array<{ dispose(): void }> = [];
   const m = new THREE.Matrix4();
@@ -44,7 +160,7 @@ export function createProps(map: MapDef): { group: THREE.Group; dispose(): void 
   const s = new THREE.Vector3();
   const up = new THREE.Vector3(0, 1, 0);
 
-  // Walls
+  // Walls (maps that have them)
   const box = new THREE.BoxGeometry(1, 1, 1);
   disposables.push(box);
   for (const material of Object.keys(WALL_COLORS) as WallMaterial[]) {
@@ -70,35 +186,238 @@ export function createProps(map: MapDef): { group: THREE.Group; dispose(): void 
   }
 
   // Rocks
-  const rockMat = new THREE.MeshStandardMaterial({
-    color: map.atmosphere.rockColor,
-    roughness: 0.92,
-    flatShading: true,
-  });
-  disposables.push(rockMat);
-  for (let v = 0; v < ROCK_VARIANTS; v++) {
-    const rocks = map.rocks.filter((r) => r.variant === v);
-    if (rocks.length === 0) continue;
-    const geometry = rockGeometry(v);
-    const mesh = new THREE.InstancedMesh(geometry, rockMat, rocks.length);
-    rocks.forEach((r, i) => {
-      const c = r.collider;
-      p.set(c.center.x, c.center.y, c.center.z);
-      q.setFromAxisAngle(up, r.rotY);
-      s.set(c.radiusXZ, c.radiusY, c.radiusXZ);
-      m.compose(p, q, s);
-      mesh.setMatrixAt(i, m);
+  const shapes: Array<{ geometry: THREE.BufferGeometry; material: THREE.Material }> = [];
+  if (rockAssets.length > 0) {
+    for (const a of rockAssets) shapes.push(a);
+  } else {
+    const mat = new THREE.MeshStandardMaterial({
+      color: map.atmosphere.rockColor,
+      roughness: 0.92,
+      flatShading: true,
     });
-    mesh.instanceMatrix.needsUpdate = true;
-    mesh.castShadow = true;
-    mesh.receiveShadow = true;
-    group.add(mesh);
-    disposables.push(geometry);
+    disposables.push(mat);
+    for (let v = 0; v < PROCEDURAL_ROCK_VARIANTS; v++) {
+      const geometry = proceduralRockGeometry(v);
+      disposables.push(geometry);
+      shapes.push({ geometry, material: mat });
+    }
+  }
+  const isNear = (r: RockProp): boolean =>
+    Math.hypot(r.collider.center.x - playerZone.centerX, r.collider.center.z - playerZone.centerZ) <
+    NEAR_ROCK_M;
+  shapes.forEach((shape, v) => {
+    for (const near of [true, false]) {
+      const rocks = map.rocks.filter((r) => r.variant % shapes.length === v && isNear(r) === near);
+      if (rocks.length === 0) continue;
+      const mesh = new THREE.InstancedMesh(shape.geometry, shape.material, rocks.length);
+      rocks.forEach((r, i) => {
+        const c = r.collider;
+        p.set(c.center.x, c.center.y, c.center.z);
+        q.setFromAxisAngle(up, r.rotY);
+        s.set(c.radiusXZ, c.radiusY, c.radiusXZ);
+        m.compose(p, q, s);
+        mesh.setMatrixAt(i, m);
+      });
+      mesh.instanceMatrix.needsUpdate = true;
+      mesh.castShadow = near;
+      mesh.receiveShadow = true;
+      group.add(mesh);
+    }
+  });
+
+  // Wooden crates (D-032): hiding places that bullets pass through. Variant 1 is a little
+  // darker and comes with a loose plank lying next to it (a ruined look). A crate that is shot
+  // is swapped for its own mesh with its own textures so the bullet holes can be see-through.
+  let perforateCrate: (index: number, entry: Vec3, exit?: Vec3) => void = () => undefined;
+  if (map.crates.length > 0) {
+    const geometry = crateGeometry();
+    const baseCanvas = woodAtlasCanvas();
+    const baseTexture = atlasTexture(baseCanvas, false);
+    disposables.push(geometry, baseTexture);
+    const intactMat = new THREE.MeshStandardMaterial({ map: baseTexture, roughness: 0.95 });
+    const brokenMat = new THREE.MeshStandardMaterial({
+      map: baseTexture,
+      color: 0xd9c4ae,
+      roughness: 1,
+    });
+    disposables.push(intactMat, brokenMat);
+    const qLean = new THREE.Quaternion();
+    const zAxis = new THREE.Vector3(0, 0, 1);
+    const rng = createRng(5150);
+    const planks: Array<{ x: number; y: number; z: number; rot: number; tilt: number }> = [];
+    const slots = new Map<number, { mesh: THREE.InstancedMesh; instance: number }>();
+    const crateMatrix = (c: MapDef["crates"][number], out: THREE.Matrix4): void => {
+      p.set(c.box.center.x, c.box.center.y, c.box.center.z);
+      q.setFromAxisAngle(up, c.box.rotY);
+      qLean.setFromAxisAngle(zAxis, c.lean);
+      q.multiply(qLean);
+      s.set(c.box.half.x * 2, c.box.half.y * 2, c.box.half.z * 2);
+      out.compose(p, q, s);
+    };
+    for (const variant of [0, 1] as const) {
+      const ids: number[] = [];
+      map.crates.forEach((c, i) => {
+        if (c.variant === variant) ids.push(i);
+      });
+      if (ids.length === 0) continue;
+      const mesh = new THREE.InstancedMesh(
+        geometry,
+        variant === 0 ? intactMat : brokenMat,
+        ids.length,
+      );
+      ids.forEach((crateIndex, i) => {
+        const c = map.crates[crateIndex];
+        if (!c) return;
+        crateMatrix(c, m);
+        mesh.setMatrixAt(i, m);
+        slots.set(crateIndex, { mesh, instance: i });
+        if (variant === 1) {
+          const a = rng() * Math.PI * 2;
+          const d = Math.max(c.box.half.x, c.box.half.z) + 0.5 + rng() * 0.6;
+          planks.push({
+            x: c.box.center.x + Math.cos(a) * d,
+            y: c.box.center.y - c.box.half.y + 0.1,
+            z: c.box.center.z + Math.sin(a) * d,
+            rot: rng() * Math.PI,
+            tilt: (rng() - 0.5) * 0.4,
+          });
+        }
+      });
+      mesh.instanceMatrix.needsUpdate = true;
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      group.add(mesh);
+    }
+    if (planks.length > 0) {
+      const mesh = new THREE.InstancedMesh(box, brokenMat, planks.length);
+      planks.forEach((pl, i) => {
+        p.set(pl.x, pl.y, pl.z);
+        q.setFromAxisAngle(up, pl.rot);
+        qLean.setFromAxisAngle(zAxis, pl.tilt);
+        q.multiply(qLean);
+        s.set(1.3, 0.05, 0.16);
+        m.compose(p, q, s);
+        mesh.setMatrixAt(i, m);
+      });
+      mesh.instanceMatrix.needsUpdate = true;
+      mesh.receiveShadow = true;
+      group.add(mesh);
+    }
+
+    interface Perforated {
+      mapCanvas: HTMLCanvasElement;
+      alphaCanvas: HTMLCanvasElement;
+      mapTexture: THREE.CanvasTexture;
+      alphaTexture: THREE.CanvasTexture;
+    }
+    const perforated = new Map<number, Perforated>();
+    const zero = new THREE.Matrix4().makeScale(0, 0, 0);
+
+    /** Gives a crate its own mesh and textures the first time it is shot. */
+    const detach = (index: number): Perforated | null => {
+      const existing = perforated.get(index);
+      if (existing) return existing;
+      const crate = map.crates[index];
+      const slot = slots.get(index);
+      if (!crate || !slot || perforated.size >= MAX_PERFORATED) return null;
+      const mapCanvas = document.createElement("canvas");
+      mapCanvas.width = baseCanvas.width;
+      mapCanvas.height = baseCanvas.height;
+      mapCanvas.getContext("2d")?.drawImage(baseCanvas, 0, 0);
+      const alphaCanvas = document.createElement("canvas");
+      alphaCanvas.width = baseCanvas.width;
+      alphaCanvas.height = baseCanvas.height;
+      const ag = alphaCanvas.getContext("2d");
+      if (ag) {
+        ag.fillStyle = "#fff";
+        ag.fillRect(0, 0, alphaCanvas.width, alphaCanvas.height);
+      }
+      const mapTexture = atlasTexture(mapCanvas, false);
+      const alphaTexture = atlasTexture(alphaCanvas, true);
+      const material = new THREE.MeshStandardMaterial({
+        map: mapTexture,
+        alphaMap: alphaTexture,
+        alphaTest: 0.5,
+        color: crate.variant === 1 ? 0xd9c4ae : 0xffffff,
+        roughness: 0.95,
+      });
+      const own = new THREE.Mesh(geometry, material);
+      const mat4 = new THREE.Matrix4();
+      crateMatrix(crate, mat4);
+      mat4.decompose(own.position, own.quaternion, own.scale);
+      own.castShadow = true;
+      own.receiveShadow = true;
+      group.add(own);
+      slot.mesh.setMatrixAt(slot.instance, zero);
+      slot.mesh.instanceMatrix.needsUpdate = true;
+      disposables.push(material, mapTexture, alphaTexture);
+      const entry: Perforated = { mapCanvas, alphaCanvas, mapTexture, alphaTexture };
+      perforated.set(index, entry);
+      return entry;
+    };
+
+    /** Paints one bullet hole where a world point lies on a crate face. */
+    const paintHole = (state: Perforated, index: number, point: Vec3): void => {
+      const crateBox = map.crates[index]?.box;
+      if (!crateBox) return;
+      const { face, fu, fv, sizeU, sizeV } = crateFaceAt(crateBox, point);
+      const cx = face % 3;
+      const cy = Math.floor(face / 3);
+      const x = (cx + fu) * CELL;
+      const y = (cy + 1 - fv) * CELL;
+      const rx = (HOLE_RADIUS_M / sizeU) * CELL;
+      const ry = (HOLE_RADIUS_M / sizeV) * CELL;
+      const jitter = createRng(Math.floor(point.x * 1000) ^ Math.floor(point.z * 1000));
+      const ragged = (g: CanvasRenderingContext2D, scale: number): void => {
+        g.beginPath();
+        const steps = 14;
+        for (let k = 0; k < steps; k++) {
+          const a = (k / steps) * Math.PI * 2;
+          const r = scale * (0.8 + jitter() * 0.4);
+          const px = x + Math.cos(a) * rx * r;
+          const py = y + Math.sin(a) * ry * r;
+          if (k === 0) g.moveTo(px, py);
+          else g.lineTo(px, py);
+        }
+        g.closePath();
+      };
+      const mg = state.mapCanvas.getContext("2d");
+      const ag = state.alphaCanvas.getContext("2d");
+      for (const g of [mg, ag]) {
+        if (!g) continue;
+        g.save();
+        g.beginPath();
+        g.rect(cx * CELL, cy * CELL, CELL, CELL);
+        g.clip();
+      }
+      if (mg) {
+        // Burnt, splintered rim around the hole.
+        mg.fillStyle = "rgba(34, 22, 12, 0.9)";
+        ragged(mg, 1.7);
+        mg.fill();
+      }
+      if (ag) {
+        ag.fillStyle = "#000";
+        ragged(ag, 1);
+        ag.fill();
+      }
+      for (const g of [mg, ag]) g?.restore();
+      state.mapTexture.needsUpdate = true;
+      state.alphaTexture.needsUpdate = true;
+    };
+
+    perforateCrate = (index, entry, exit): void => {
+      const state = detach(index);
+      if (!state) return;
+      paintHole(state, index, entry);
+      if (exit) paintHole(state, index, exit);
+    };
   }
 
   // Shrubs (decoration only, no collider)
+  let shrubs: THREE.Object3D | null = null;
   if (map.shrubs.length > 0) {
-    const geometry = new THREE.IcosahedronGeometry(0.5, 1);
+    const geometry = new THREE.IcosahedronGeometry(0.5, 0);
     const mat = new THREE.MeshStandardMaterial({
       color: SHRUB_COLOR,
       roughness: 1,
@@ -117,10 +436,13 @@ export function createProps(map: MapDef): { group: THREE.Group; dispose(): void 
     mesh.receiveShadow = true;
     group.add(mesh);
     disposables.push(geometry, mat);
+    shrubs = mesh;
   }
 
   return {
     group,
+    shrubs,
+    perforateCrate: (index, entry, exit) => perforateCrate(index, entry, exit),
     dispose: () => {
       for (const d of disposables) d.dispose();
     },
