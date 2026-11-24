@@ -10,6 +10,7 @@ export interface SoundBank {
   dryFire: AudioBuffer;
   impactGround: AudioBuffer;
   impactRock: AudioBuffer;
+  impactWood: AudioBuffer;
   impactBody: AudioBuffer;
   heartbeat: AudioBuffer;
   windNoise: AudioBuffer;
@@ -57,6 +58,7 @@ export function createSoundBank(ctx: AudioContext): SoundBank {
   const groundLp = lowpass(0.08);
   const rockLp = lowpass(0.5);
   const bodyLp = lowpass(0.04);
+  const woodLp = lowpass(0.3);
   const windLp = lowpass(0.02);
 
   return {
@@ -96,6 +98,27 @@ export function createSoundBank(ctx: AudioContext): SoundBank {
         rockLp(r() * 2 - 1) * Math.exp(-t * 30) +
         Math.sin(2 * Math.PI * 1900 * t) * Math.exp(-t * 40) * 0.3,
       16,
+    ),
+    // Wood a bullet punches through: a dull thump, a hollow knock, and splintering crackle.
+    impactWood: render(
+      ctx,
+      0.5,
+      (t, r) => {
+        const thump =
+          Math.sin(2 * Math.PI * (150 - 70 * Math.min(1, t * 8)) * t) * Math.exp(-t * 22);
+        const knock =
+          (Math.sin(2 * Math.PI * 420 * t) + 0.6 * Math.sin(2 * Math.PI * 760 * t)) *
+          Math.exp(-t * 35) *
+          0.28;
+        const crackle =
+          woodLp(r() * 2 - 1) *
+          (click(t, 0.012, r, 220) + click(t, 0.035, r, 260) * 0.7 + click(t, 0.07, r, 300) * 0.5);
+        // A bright, sharp snap at the very start: only close impacts keep it after the distance
+        // low-pass, so near and far wood sound clearly different.
+        const snap = (r() * 2 - 1) * Math.exp(-t * 500) * 1.1;
+        return thump * 0.9 + knock + crackle * 2.2 + snap;
+      },
+      25,
     ),
     impactBody: render(
       ctx,

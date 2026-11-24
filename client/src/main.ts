@@ -45,6 +45,8 @@ import { buildWorld } from "./world/MapLayout";
 const OVERLAY_REFRESH_S = 0.5;
 const PULSE_HZ = 1.2;
 const RECOIL_KICK_RAD = 0.035;
+/** Scoped kick as a fraction of the scope's field of view: the same on screen at every zoom. */
+const RECOIL_SCOPED_FOV_FRACTION = 0.08;
 const RECOIL_RECOVER_S = 0.18;
 const BOLT_SOUND_DELAY_S = 0.45;
 const HEARTBEAT_INTERVAL_S = 0.85;
@@ -190,7 +192,12 @@ async function start(): Promise<void> {
       }
       audio.playAtDistance(sounds?.impactBody ?? null, heardFrom, 1.6, pan);
     } else {
-      const buffer = impact.kind === "terrain" ? sounds?.impactGround : sounds?.impactRock;
+      const buffer =
+        impact.kind === "terrain"
+          ? sounds?.impactGround
+          : impact.kind === "crate"
+            ? sounds?.impactWood
+            : sounds?.impactRock;
       audio.playAtDistance(buffer ?? null, heardFrom, 1.2, pan);
     }
   };
@@ -224,7 +231,9 @@ async function start(): Promise<void> {
             bullets.fire(
               launchState(eye, player.yaw + sway.yaw, player.pitch + sway.pitch, zeroIndex),
             );
-            recoil = RECOIL_KICK_RAD;
+            recoil = scoped
+              ? ((scope.fovDeg * Math.PI) / 180) * RECOIL_SCOPED_FOV_FRACTION
+              : RECOIL_KICK_RAD;
             audio.play(sounds?.shot ?? null, { gain: 1 });
             if (rifle.rounds > 0)
               audio.play(sounds?.bolt ?? null, { delayS: BOLT_SOUND_DELAY_S, gain: 0.5 });

@@ -6,6 +6,8 @@ export interface PlayOptions {
   gain?: number;
   /** Stereo position, -1 (left) to 1 (right). */
   pan?: number;
+  /** Low-pass cutoff in Hz: far sounds lose their sharp highs (muffled). */
+  cutoffHz?: number;
 }
 
 /**
@@ -47,14 +49,29 @@ export class AudioBus {
     gain.gain.value = options.gain ?? 1;
     const panner = ctx.createStereoPanner();
     panner.pan.value = Math.max(-1, Math.min(1, options.pan ?? 0));
-    source.connect(gain).connect(panner).connect(master);
+    if (options.cutoffHz !== undefined) {
+      const filter = ctx.createBiquadFilter();
+      filter.type = "lowpass";
+      filter.frequency.value = options.cutoffHz;
+      source.connect(filter).connect(gain);
+    } else {
+      source.connect(gain);
+    }
+    gain.connect(panner).connect(master);
     source.start(ctx.currentTime + Math.max(0, options.delayS ?? 0));
   }
 
   /** Plays a sound that happens `distanceM` away: delayed by the speed of sound and attenuated. */
   playAtDistance(buffer: AudioBuffer | null, distanceM: number, gain = 1, pan = 0): void {
     const attenuation = 1 / (1 + distanceM / 60);
-    this.play(buffer, { delayS: distanceM / AUDIO.speedOfSoundMps, gain: gain * attenuation, pan });
+    // Air absorbs the highs: near sounds are sharp, far sounds are dull (D-042).
+    const cutoffHz = Math.max(500, 14000 / (1 + distanceM / 25));
+    this.play(buffer, {
+      delayS: distanceM / AUDIO.speedOfSoundMps,
+      gain: gain * attenuation,
+      pan,
+      cutoffHz,
+    });
   }
 
   /** Starts the looping wind bed (call once after unlock). */

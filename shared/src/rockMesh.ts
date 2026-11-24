@@ -16,10 +16,24 @@ export interface RockMesh {
   /** Bounding box of the triangles in the unit frame. */
   min: Vec3;
   max: Vec3;
+  /**
+   * The rock's natural height / width ratio (half height over half width). Rocks keep their
+   * natural proportions instead of being stretched into the map's collider box (D-043).
+   */
+  aspect: number;
+}
+
+/** Fraction of the map's own rock height that still shapes the rock (the rest is natural). */
+const MAP_HEIGHT_WEIGHT = 0.25;
+
+/** Half height of a placed rock: mostly its natural proportions, a little of the map's height. */
+export function rockHalfHeight(rock: RockProp, aspect: number): number {
+  const c = rock.collider;
+  return c.radiusY * MAP_HEIGHT_WEIGHT + c.radiusXZ * aspect * (1 - MAP_HEIGHT_WEIGHT);
 }
 
 /** Builds a RockMesh from flat triangle coordinates (9 numbers per triangle). */
-export function createRockMesh(triangles: ArrayLike<number>): RockMesh {
+export function createRockMesh(triangles: ArrayLike<number>, aspect = 1): RockMesh {
   const data = Float32Array.from(triangles);
   const min = { x: Infinity, y: Infinity, z: Infinity };
   const max = { x: -Infinity, y: -Infinity, z: -Infinity };
@@ -34,14 +48,18 @@ export function createRockMesh(triangles: ArrayLike<number>): RockMesh {
     if (y > max.y) max.y = y;
     if (z > max.z) max.z = z;
   }
-  return { triangles: data, min, max };
+  return { triangles: data, min, max, aspect };
 }
 
 /** Moves a world point into a rock's unit frame. */
-function toRockLocal(rock: RockProp, p: Vec3): Vec3 {
+function toRockLocal(rock: RockProp, p: Vec3, aspect: number): Vec3 {
   const c = rock.collider;
   const l = toBoxLocal(rock.rotY, p.x - c.center.x, p.z - c.center.z);
-  return { x: l.x / c.radiusXZ, y: (p.y - c.center.y) / c.radiusY, z: l.z / c.radiusXZ };
+  return {
+    x: l.x / c.radiusXZ,
+    y: (p.y - c.center.y) / rockHalfHeight(rock, aspect),
+    z: l.z / c.radiusXZ,
+  };
 }
 
 /** Segment against an axis-aligned box (t in 0..1 or null). */
@@ -72,8 +90,8 @@ function segmentBox(a: Vec3, b: Vec3, min: Vec3, max: Vec3): boolean {
  * @returns t in [0, 1], or null if the segment misses every triangle.
  */
 export function segmentRockMesh(a: Vec3, b: Vec3, rock: RockProp, mesh: RockMesh): number | null {
-  const la = toRockLocal(rock, a);
-  const lb = toRockLocal(rock, b);
+  const la = toRockLocal(rock, a, mesh.aspect);
+  const lb = toRockLocal(rock, b, mesh.aspect);
   if (!segmentBox(la, lb, mesh.min, mesh.max)) return null;
   const dx = lb.x - la.x;
   const dy = lb.y - la.y;

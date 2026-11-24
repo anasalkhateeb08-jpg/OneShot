@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { segmentEllipsoid } from "./geometry";
 import { raycastWorld, traceSegment } from "./raycast";
 import type { WorldColliders } from "./raycast";
-import { createRockMesh, segmentRockMesh } from "./rockMesh";
+import { createRockMesh, rockHalfHeight, segmentRockMesh } from "./rockMesh";
 import { buildHeightGrid } from "./terrain";
 import type { RockProp } from "./maps";
 
@@ -62,5 +62,23 @@ describe("exact rock collision (D-038)", () => {
     const dir = { x: 0, y: 0, z: 1 };
     expect(raycastWorld(exact, a, dir, 20)).toBeNull();
     expect(raycastWorld(fallback, a, dir, 20)?.kind).toBe("rock");
+  });
+
+  it("keeps a rock's natural height instead of stretching it (D-043)", () => {
+    // A flat rock (half height = 40% of its half width) is placed where the map asks for tall.
+    const tall: RockProp = {
+      collider: { center: { x: 0, y: 0, z: 0 }, radiusXZ: 4, radiusY: 4 },
+      variant: 0,
+      rotY: 0,
+    };
+    const h = rockHalfHeight(tall, 0.4);
+    expect(h).toBeLessThan(2.5);
+    expect(h).toBeGreaterThan(1.6);
+    // A shot just above that real height misses; the old stretched height would have hit.
+    const flat = createRockMesh(plate.triangles, 0.4);
+    expect(segmentRockMesh({ x: 10, y: 3, z: 0 }, { x: -10, y: 3, z: 0 }, tall, flat)).toBeNull();
+    expect(
+      segmentRockMesh({ x: 10, y: 1, z: 0 }, { x: -10, y: 1, z: 0 }, tall, flat),
+    ).not.toBeNull();
   });
 });

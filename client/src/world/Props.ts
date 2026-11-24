@@ -1,5 +1,5 @@
 import * as THREE from "three/webgpu";
-import { createRng, fbm2 } from "@oneshot/shared";
+import { createRng, fbm2, rockHalfHeight } from "@oneshot/shared";
 import { CRATE_FACES, crateFaceAt } from "@oneshot/shared";
 import type { MapDef, PlayerZone, RockProp, Vec3, WallMaterial } from "@oneshot/shared";
 import type { RockAsset } from "../core/Assets";
@@ -14,6 +14,8 @@ const SHRUB_COLOR = 0x6c6a3c;
 const PROCEDURAL_ROCK_VARIANTS = 3;
 /** Rocks closer than this to the player's zone cast shadows (the shadow map only covers ~60 m). */
 const NEAR_ROCK_M = 90;
+/** Rocks farther than this from the player's zone use the cheapest detail level. */
+const MID_ROCK_M = 200;
 
 /**
  * Fallback rock shape when no photoscanned rock is available: an icosphere pushed in and out by
@@ -186,7 +188,12 @@ export function createProps(
   }
 
   // Rocks
-  const shapes: Array<{ geometry: THREE.BufferGeometry; material: THREE.Material }> = [];
+  const shapes: Array<{
+    geometry: THREE.BufferGeometry;
+    material: THREE.Material;
+    aspect?: number;
+    lods?: { mid: THREE.BufferGeometry | null; lo: THREE.BufferGeometry | null };
+  }> = [];
   if (rockAssets.length > 0) {
     for (const a of rockAssets) shapes.push(a);
   } else {
@@ -202,19 +209,40 @@ export function createProps(
       shapes.push({ geometry, material: mat });
     }
   }
-  const isNear = (r: RockProp): boolean =>
-    Math.hypot(r.collider.center.x - playerZone.centerX, r.collider.center.z - playerZone.centerZ) <
-    NEAR_ROCK_M;
+  const zoneDistance = (r: RockProp): number =>
+    Math.hypot(r.collider.center.x - playerZone.centerX, r.collider.center.z - playerZone.centerZ);
   shapes.forEach((shape, v) => {
-    for (const near of [true, false]) {
-      const rocks = map.rocks.filter((r) => r.variant % shapes.length === v && isNear(r) === near);
+    // Three detail levels by distance from the player's zone (D-044): near rocks are smooth and
+    // cast shadows, middle ones are lighter, far ones are cheap.
+    const tiers = [
+      { min: 0, max: NEAR_ROCK_M, geometry: shape.geometry, near: true },
+      {
+        min: NEAR_ROCK_M,
+        max: MID_ROCK_M,
+        geometry: shape.lods?.mid ?? shape.geometry,
+        near: false,
+      },
+      {
+        min: MID_ROCK_M,
+        max: Infinity,
+        geometry: shape.lods?.lo ?? shape.lods?.mid ?? shape.geometry,
+        near: false,
+      },
+    ];
+    for (const tier of tiers) {
+      const near = tier.near;
+      const rocks = map.rocks.filter((r) => {
+        const d = zoneDistance(r);
+        return r.variant % shapes.length === v && d >= tier.min && d < tier.max;
+      });
       if (rocks.length === 0) continue;
-      const mesh = new THREE.InstancedMesh(shape.geometry, shape.material, rocks.length);
+      const mesh = new THREE.InstancedMesh(tier.geometry, shape.material, rocks.length);
       rocks.forEach((r, i) => {
         const c = r.collider;
         p.set(c.center.x, c.center.y, c.center.z);
         q.setFromAxisAngle(up, r.rotY);
-        s.set(c.radiusXZ, c.radiusY, c.radiusXZ);
+        const halfHeight = shape.aspect === undefined ? c.radiusY : rockHalfHeight(r, shape.aspect);
+        s.set(c.radiusXZ, halfHeight, c.radiusXZ);
         m.compose(p, q, s);
         mesh.setMatrixAt(i, m);
       });

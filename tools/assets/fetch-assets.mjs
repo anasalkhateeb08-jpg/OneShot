@@ -4,8 +4,8 @@
 //   npm run assets
 //
 // - Ground texture: color, normal, and roughness maps at 1k.
-// - Rocks: photoscanned boulders, simplified to about ROCK_TARGET_TRIS triangles each
-//   (the normal map keeps the surface detail), saved as single .glb files.
+// - Rocks: photoscanned boulders, in three detail levels (about 2500, 700, and 150
+//   triangles; the normal map keeps the surface detail), saved as single .glb files.
 // Safe to run again: it rebuilds everything from scratch.
 
 import { statSync } from "node:fs";
@@ -26,7 +26,12 @@ const RES = "1k";
 
 const GROUND = "sandy_gravel_02";
 const ROCKS = ["namaqualand_boulder_02", "namaqualand_boulder_03", "namaqualand_boulder_05"];
-const ROCK_TARGET_TRIS = 300;
+/** Detail levels: near rocks (hi), middle distance (mid), far (lo). */
+const ROCK_LODS = [
+  { key: "rocks", suffix: "", tris: 2500, error: 0.01, textures: true },
+  { key: "rocksMid", suffix: "_mid", tris: 700, error: 0.02, textures: false },
+  { key: "rocksLo", suffix: "_lo", tris: 150, error: 0.05, textures: false },
+];
 
 async function getJson(url) {
   const res = await fetch(url, { headers: HEADERS });
@@ -85,7 +90,7 @@ async function main() {
   // Rocks
   await MeshoptSimplifier.ready;
   const io = new NodeIO().registerExtensions(ALL_EXTENSIONS);
-  const rocks = [];
+  const rocks = { rocks: [], rocksMid: [], rocksLo: [] };
   for (const id of ROCKS) {
     console.log(`Rock: ${id}`);
     const files = await getJson(`${API}/files/${id}`);
@@ -98,30 +103,43 @@ async function main() {
       const url = typeof item === "string" ? item : item.url;
       await download(url, path.join(dir, rel));
     }
-    const doc = await io.read(gltfFile);
-    const before = triangleCount(doc);
-    const ratio = Math.min(1, ROCK_TARGET_TRIS / Math.max(1, before));
-    await doc.transform(
-      weld(),
-      simplify({ simplifier: MeshoptSimplifier, ratio, error: 0.05 }),
-      dedup(),
-      prune(),
-    );
-    const after = triangleCount(doc);
-    const rel = `rocks/${id}.glb`;
-    const out = path.join(OUT, rel);
-    await mkdir(path.dirname(out), { recursive: true });
-    await io.write(out, doc);
-    const size = statSync(out).size;
-    total += size;
-    rocks.push(`/assets/${rel}`);
+    // Three detail levels from the same scan: close rocks are smooth and detailed, far rocks
+    // are cheap. Only the detailed file keeps the textures; the others share its material.
+    for (const lod of ROCK_LODS) {
+      const doc = await io.read(gltfFile);
+      const before = triangleCount(doc);
+      const ratio = Math.min(1, lod.tris / Math.max(1, before));
+      await doc.transform(
+        weld(),
+        simplify({ simplifier: MeshoptSimplifier, ratio, error: lod.error }),
+        dedup(),
+      );
+      if (!lod.textures) {
+        for (const mat of doc.getRoot().listMaterials()) {
+          mat.setBaseColorTexture(null);
+          mat.setNormalTexture(null);
+          mat.setOcclusionTexture(null);
+          mat.setMetallicRoughnessTexture(null);
+          mat.setEmissiveTexture(null);
+        }
+      }
+      await doc.transform(prune());
+      const after = triangleCount(doc);
+      const rel = `rocks/${id}${lod.suffix}.glb`;
+      const out = path.join(OUT, rel);
+      await mkdir(path.dirname(out), { recursive: true });
+      await io.write(out, doc);
+      const size = statSync(out).size;
+      total += size;
+      rocks[lod.key].push(`/assets/${rel}`);
+      console.log(`  ${rel}  ${before} -> ${after} triangles  ${kb(size)}`);
+    }
     licenses.push({ asset: id, kind: "model", url: `https://polyhaven.com/a/${id}` });
-    console.log(`  ${rel}  ${before} -> ${after} triangles  ${kb(size)}`);
   }
 
   await writeFile(
     path.join(OUT, "manifest.json"),
-    JSON.stringify({ source: "Poly Haven (CC0)", ground, rocks }, null, 2) + "\n",
+    JSON.stringify({ source: "Poly Haven (CC0)", ground, ...rocks }, null, 2) + "\n",
   );
 
   const date = new Date().toISOString().slice(0, 10);

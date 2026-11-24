@@ -24,3 +24,5 @@ Thumbs.db
 
 # Downloaded by npm run assets (regenerable, ~10 MB)
 client/public/assets/
+.assets-src/
+.assets-pro/

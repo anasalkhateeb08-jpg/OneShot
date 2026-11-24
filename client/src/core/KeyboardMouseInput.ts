@@ -146,7 +146,7 @@ export class KeyboardMouseInput implements InputSource {
         this.changeZero(1);
         break;
       case "KeyV":
-        if (!e.repeat) this.cycleZoom = true;
+        if (!e.repeat && this.scoped) this.cycleZoom = true;
         break;
       case "KeyR":
         if (!e.repeat) this.reloadPressed = true;
@@ -180,7 +180,9 @@ export class KeyboardMouseInput implements InputSource {
   private onWheel(e: WheelEvent): void {
     if (!this.isLocked()) return;
     e.preventDefault();
-    this.zoomDelta += e.deltaY < 0 ? 1 : -1;
+    // The zoom only changes while the scope is up (right mouse held), so it never moves in
+    // the background (owner request, D-040).
+    if (this.scoped) this.zoomDelta += e.deltaY < 0 ? 1 : -1;
   }
 
   private changeZero(delta: number): void {

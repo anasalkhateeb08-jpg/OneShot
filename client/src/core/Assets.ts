@@ -7,6 +7,9 @@ import type { RockMesh } from "@oneshot/shared";
 interface Manifest {
   ground: { diff: string; nor: string; rough: string };
   rocks: string[];
+  /** Optional lower-detail copies for rocks at middle distance and far away (D-044). */
+  rocksMid?: string[];
+  rocksLo?: string[];
 }
 
 export interface GroundMaps {
@@ -21,6 +24,10 @@ export interface RockAsset {
   material: THREE.Material;
   /** The same triangles as the drawn rock, for exact bullet and laser collision (D-038). */
   mesh: RockMesh;
+  /** Natural half height over half width (see rockHalfHeight in shared). */
+  aspect: number;
+  /** Cheaper copies of the same rock, scaled the same way (null if not available). */
+  lods: { mid: THREE.BufferGeometry | null; lo: THREE.BufferGeometry | null };
 }
 
 /** Flat x, y, z triples of every triangle of a geometry (9 numbers per triangle). */
@@ -53,10 +60,44 @@ async function loadTexture(url: string, color: boolean): Promise<THREE.Texture> 
 }
 
 /** Loads one rock model and rescales it so its bounding box spans -1..1 on every axis. */
-async function loadRock(loader: GLTFLoader, url: string): Promise<RockAsset | null> {
+interface RockNorm {
+  center: THREE.Vector3;
+  width: number;
+  height: number;
+}
+
+/** Loads a lower-detail rock and puts it in the same frame as the detailed rock. */
+async function loadRockLod(
+  loader: GLTFLoader,
+  url: string,
+  norm: RockNorm,
+): Promise<THREE.BufferGeometry | null> {
+  const gltf = await loader.loadAsync(url);
+  gltf.scene.updateMatrixWorld(true);
+  let out: THREE.BufferGeometry | null = null;
+  gltf.scene.traverse((obj) => {
+    if (out) return;
+    const mesh = obj as THREE.Mesh;
+    if (!mesh.isMesh) return;
+    const geometry = mesh.geometry.clone();
+    geometry.applyMatrix4(mesh.matrixWorld);
+    geometry.translate(-norm.center.x, -norm.center.y, -norm.center.z);
+    geometry.scale(1 / norm.width, 1 / norm.height, 1 / norm.width);
+    geometry.computeVertexNormals();
+    out = geometry;
+  });
+  return out;
+}
+
+async function loadRock(
+  loader: GLTFLoader,
+  url: string,
+  lodUrls: { mid?: string; lo?: string },
+): Promise<RockAsset | null> {
   const gltf = await loader.loadAsync(url);
   gltf.scene.updateMatrixWorld(true);
   let found: RockAsset | null = null;
+  let norm: RockNorm | null = null;
   gltf.scene.traverse((obj) => {
     if (found) return;
     const mesh = obj as THREE.Mesh;
@@ -69,17 +110,38 @@ async function loadRock(loader: GLTFLoader, url: string): Promise<RockAsset | nu
     const center = box.getCenter(new THREE.Vector3());
     const half = box.getSize(new THREE.Vector3()).multiplyScalar(0.5);
     geometry.translate(-center.x, -center.y, -center.z);
-    geometry.scale(
-      1 / Math.max(half.x, 1e-6),
-      1 / Math.max(half.y, 1e-6),
-      1 / Math.max(half.z, 1e-6),
-    );
+    // Same scale on both horizontal axes keeps the rock's natural shape (D-043).
+    const width = Math.max(half.x, half.z, 1e-6);
+    const height = Math.max(half.y, 1e-6);
+    geometry.scale(1 / width, 1 / height, 1 / width);
+    const aspect = height / width;
+    norm = { center, width, height };
     geometry.computeVertexNormals();
     const material = Array.isArray(mesh.material) ? mesh.material[0] : mesh.material;
     if (!material) return;
-    found = { geometry, material, mesh: createRockMesh(triangleList(geometry)) };
+    found = {
+      geometry,
+      material,
+      mesh: createRockMesh(triangleList(geometry), aspect),
+      aspect,
+      lods: { mid: null, lo: null },
+    };
   });
-  return found;
+  const asset = found as RockAsset | null;
+  const n = norm as RockNorm | null;
+  if (asset && n) {
+    const lod = async (lodUrl?: string): Promise<THREE.BufferGeometry | null> => {
+      if (!lodUrl) return null;
+      try {
+        return await loadRockLod(loader, lodUrl, n);
+      } catch (err) {
+        console.warn(`Rock detail level failed to load: ${lodUrl}`, err);
+        return null;
+      }
+    };
+    asset.lods = { mid: await lod(lodUrls.mid), lo: await lod(lodUrls.lo) };
+  }
+  return asset;
 }
 
 /**
@@ -111,9 +173,12 @@ export async function loadAssets(): Promise<GameAssets> {
 
   const loader = new GLTFLoader();
   const rocks: RockAsset[] = [];
-  for (const url of manifest.rocks) {
+  for (const [i, url] of manifest.rocks.entries()) {
     try {
-      const rock = await loadRock(loader, url);
+      const rock = await loadRock(loader, url, {
+        mid: manifest.rocksMid?.[i],
+        lo: manifest.rocksLo?.[i],
+      });
       if (rock) rocks.push(rock);
     } catch (err) {
       console.warn(`Rock model failed to load: ${url}`, err);
