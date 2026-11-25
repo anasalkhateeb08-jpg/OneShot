@@ -22,6 +22,7 @@ const sample: MapLayout = {
     },
   ],
   shrubs: [{ x: 1, z: 2, scale: 1.2 }],
+  models: [{ type: "sandbag_barrier", x: 4, z: 30, lift: 0, rotY: 0, scale: { x: 2, y: 1, z: 1 } }],
 };
 
 describe("map layout (D-049)", () => {
@@ -43,6 +44,23 @@ describe("map layout (D-049)", () => {
     // 10 ground - 0.05 base + 0.4 half height
     expect(p.crates[0]?.box.center.y).toBeCloseTo(10.35);
     expect(p.shrubs[0]?.pos.y).toBe(10);
+  });
+
+  it("places models on the ground at their real size, mirrored (D-054)", () => {
+    const p = propsFromLayout(sample, flat);
+    expect(p.models).toHaveLength(2);
+    const [a, b] = p.models;
+    expect(a?.half.x).toBeCloseTo(2.37); // 2.37 m long, scale 2, half of it
+    expect(a?.center.y).toBeCloseTo(10 + 0.53 / 2); // bottom on the ground
+    expect(b?.center.x).toBeCloseTo(-4);
+    expect(b?.center.z).toBeCloseTo(-30);
+    expect(b?.rotY).toBeCloseTo(Math.PI);
+  });
+
+  it("reads an older file without models as an empty list", () => {
+    const old: Record<string, unknown> = { ...sample };
+    delete old.models;
+    expect(parseLayout(old).models).toEqual([]);
   });
 
   it("rejects a broken file with a clear message", () => {

@@ -249,6 +249,10 @@ for node in final_mat.node_tree.nodes:
         log(f"texture {img.name}: {img.size[0]} -> {BAKE_PX} px")
         img.scale(BAKE_PX, BAKE_PX)
 
+# Removes degenerate faces left by decimation (the exporter warned "mesh is not valid").
+for lod in lods:
+    lod.data.validate(verbose=False)
+
 os.makedirs(OUT_DIR, exist_ok=True)
 names = [f"{ROCK_ID}.glb", f"{ROCK_ID}_mid.glb", f"{ROCK_ID}_lo.glb"]
 for lod, fname in zip(lods, names):

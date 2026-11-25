@@ -2,7 +2,7 @@ import * as THREE from "three/webgpu";
 import { createRng, fbm2, rockHalfHeight } from "@oneshot/shared";
 import { CRATE_FACES, crateFaceAt } from "@oneshot/shared";
 import type { MapDef, PlayerZone, RockProp, Vec3, WallMaterial } from "@oneshot/shared";
-import type { RockAsset } from "../core/Assets";
+import type { ModelAsset, RockAsset } from "../core/Assets";
 
 const WALL_COLORS: Record<WallMaterial, number> = {
   mudbrick: 0xb38f66,
@@ -132,6 +132,15 @@ function atlasTexture(canvas: HTMLCanvasElement, data: boolean): THREE.CanvasTex
   return texture;
 }
 
+/**
+ * Set on every prop InstancedMesh (`mesh.userData.pick`): which map list it draws and the map
+ * index of each instance, so the editor can tell what was clicked (D-049).
+ */
+export interface PropPick {
+  kind: "rock" | "crate" | "shrub" | "model";
+  indices: number[];
+}
+
 export interface PropsView {
   group: THREE.Group;
   /** Shrubs can be hidden on the Low quality preset. */
@@ -153,6 +162,7 @@ export function createProps(
   map: MapDef,
   rockAssets: readonly RockAsset[],
   playerZone: PlayerZone,
+  modelAssets: ReadonlyMap<string, ModelAsset> = new Map(),
 ): PropsView {
   const group = new THREE.Group();
   const disposables: Array<{ dispose(): void }> = [];
@@ -161,6 +171,7 @@ export function createProps(
   const p = new THREE.Vector3();
   const s = new THREE.Vector3();
   const up = new THREE.Vector3(0, 1, 0);
+  const euler = new THREE.Euler();
 
   // Walls (maps that have them)
   const box = new THREE.BoxGeometry(1, 1, 1);
@@ -231,16 +242,22 @@ export function createProps(
     ];
     for (const tier of tiers) {
       const near = tier.near;
-      const rocks = map.rocks.filter((r) => {
+      const indices: number[] = [];
+      map.rocks.forEach((r, index) => {
         const d = zoneDistance(r);
-        return r.variant % shapes.length === v && d >= tier.min && d < tier.max;
+        if (r.variant % shapes.length === v && d >= tier.min && d < tier.max) indices.push(index);
       });
+      const rocks = indices
+        .map((index) => map.rocks[index])
+        .filter((r): r is RockProp => r !== undefined);
       if (rocks.length === 0) continue;
       const mesh = new THREE.InstancedMesh(tier.geometry, shape.material, rocks.length);
+      mesh.userData.pick = { kind: "rock", indices } satisfies PropPick;
       rocks.forEach((r, i) => {
         const c = r.collider;
         p.set(c.center.x, c.center.y, c.center.z);
-        q.setFromAxisAngle(up, r.rotY);
+        euler.set(r.rotX ?? 0, r.rotY, r.rotZ ?? 0, "YXZ");
+        q.setFromEuler(euler);
         const halfHeight = shape.aspect === undefined ? c.radiusY : rockHalfHeight(r, shape.aspect);
         s.set(c.radiusXZ, halfHeight, c.radiusXZ);
         m.compose(p, q, s);
@@ -293,6 +310,7 @@ export function createProps(
         variant === 0 ? intactMat : brokenMat,
         ids.length,
       );
+      mesh.userData.pick = { kind: "crate", indices: ids } satisfies PropPick;
       ids.forEach((crateIndex, i) => {
         const c = map.crates[crateIndex];
         if (!c) return;
@@ -452,6 +470,10 @@ export function createProps(
       flatShading: true,
     });
     const mesh = new THREE.InstancedMesh(geometry, mat, map.shrubs.length);
+    mesh.userData.pick = {
+      kind: "shrub",
+      indices: map.shrubs.map((_, i) => i),
+    } satisfies PropPick;
     const rng = createRng(4242);
     map.shrubs.forEach((sh, i) => {
       p.set(sh.pos.x, sh.pos.y + 0.18 * sh.scale, sh.pos.z);
@@ -465,6 +487,44 @@ export function createProps(
     group.add(mesh);
     disposables.push(geometry, mat);
     shrubs = mesh;
+  }
+
+  // Placed models (D-054): one instanced mesh per model type. A type whose model is not loaded
+  // yet is drawn as a plain sand-colored box of the right size, so the layout stays editable.
+  const byType = new Map<string, number[]>();
+  map.models.forEach((model, index) => {
+    const list = byType.get(model.type) ?? [];
+    list.push(index);
+    byType.set(model.type, list);
+  });
+  for (const [type, indices] of byType) {
+    const asset = modelAssets.get(type);
+    let geometry: THREE.BufferGeometry;
+    let material: THREE.Material;
+    if (asset) {
+      geometry = asset.geometry;
+      material = asset.material;
+    } else {
+      geometry = new THREE.BoxGeometry(2, 2, 2);
+      material = new THREE.MeshStandardMaterial({ color: 0x9c8a6a, roughness: 1 });
+      disposables.push(geometry, material);
+    }
+    const mesh = new THREE.InstancedMesh(geometry, material, indices.length);
+    mesh.userData.pick = { kind: "model", indices } satisfies PropPick;
+    indices.forEach((index, i) => {
+      const model = map.models[index];
+      if (!model) return;
+      p.set(model.center.x, model.center.y, model.center.z);
+      euler.set(model.rotX ?? 0, model.rotY, model.rotZ ?? 0, "YXZ");
+      q.setFromEuler(euler);
+      s.set(model.half.x, model.half.y, model.half.z);
+      m.compose(p, q, s);
+      mesh.setMatrixAt(i, m);
+    });
+    mesh.instanceMatrix.needsUpdate = true;
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+    group.add(mesh);
   }
 
   return {

@@ -14,7 +14,7 @@ import {
 } from "@oneshot/shared";
 import type { BulletState, HitZone, HitboxPart, Vec3, WorldColliders } from "@oneshot/shared";
 
-export type ImpactKind = "terrain" | "rock" | "wall" | "crate" | "body";
+export type ImpactKind = "terrain" | "rock" | "wall" | "crate" | "model" | "body";
 
 export interface BulletImpact {
   kind: ImpactKind;

@@ -10,6 +10,16 @@ interface Manifest {
   /** Optional lower-detail copies for rocks at middle distance and far away (D-044). */
   rocksMid?: string[];
   rocksLo?: string[];
+  /** Placed model types by id (D-054), written by `npm run assets:models`. */
+  models?: Record<string, { near: string; mid?: string; lo?: string }>;
+}
+
+/** A placed model's shape, scaled so its box spans -1..1 on every axis (D-054). */
+export interface ModelAsset {
+  geometry: THREE.BufferGeometry;
+  material: THREE.Material;
+  /** The same triangles, for exact bullet collision. */
+  mesh: RockMesh;
 }
 
 export interface GroundMaps {
@@ -55,6 +65,38 @@ function keepNormals(geometry: THREE.BufferGeometry): void {
 export interface GameAssets {
   ground: GroundMaps | null;
   rocks: RockAsset[];
+  /** Loaded model types by id; a type without a loaded model is drawn as a plain box. */
+  models: Map<string, ModelAsset>;
+}
+
+/** Loads one placed model and scales it to the unit box (every axis -1..1). */
+async function loadModel(loader: GLTFLoader, url: string): Promise<ModelAsset | null> {
+  const gltf = await loader.loadAsync(url);
+  gltf.scene.updateMatrixWorld(true);
+  let found: ModelAsset | null = null;
+  gltf.scene.traverse((obj) => {
+    if (found) return;
+    const mesh = obj as THREE.Mesh;
+    if (!mesh.isMesh) return;
+    const geometry = mesh.geometry.clone();
+    geometry.applyMatrix4(mesh.matrixWorld);
+    geometry.computeBoundingBox();
+    const box = geometry.boundingBox;
+    if (!box) return;
+    const center = box.getCenter(new THREE.Vector3());
+    const half = box.getSize(new THREE.Vector3()).multiplyScalar(0.5);
+    geometry.translate(-center.x, -center.y, -center.z);
+    geometry.scale(
+      1 / Math.max(half.x, 1e-6),
+      1 / Math.max(half.y, 1e-6),
+      1 / Math.max(half.z, 1e-6),
+    );
+    keepNormals(geometry);
+    const material = Array.isArray(mesh.material) ? mesh.material[0] : mesh.material;
+    if (!material) return;
+    found = { geometry, material, mesh: createRockMesh(triangleList(geometry)) };
+  });
+  return found as ModelAsset | null;
 }
 
 const MANIFEST_URL = "/assets/manifest.json";
@@ -158,7 +200,7 @@ async function loadRock(
  * downloaded yet) or a file fails, the game falls back to its procedural look and still runs.
  */
 export async function loadAssets(): Promise<GameAssets> {
-  const empty: GameAssets = { ground: null, rocks: [] };
+  const empty: GameAssets = { ground: null, rocks: [], models: new Map() };
   let manifest: Manifest;
   try {
     const res = await fetch(MANIFEST_URL);
@@ -193,5 +235,14 @@ export async function loadAssets(): Promise<GameAssets> {
       console.warn(`Rock model failed to load: ${url}`, err);
     }
   }
-  return { ground, rocks };
+  const models = new Map<string, ModelAsset>();
+  for (const [id, files] of Object.entries(manifest.models ?? {})) {
+    try {
+      const model = await loadModel(loader, files.near);
+      if (model) models.set(id, model);
+    } catch (err) {
+      console.warn(`Model failed to load: ${files.near}`, err);
+    }
+  }
+  return { ground, rocks, models };
 }

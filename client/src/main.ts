@@ -1,6 +1,7 @@
 import "./style.css";
 import {
   DESERT_CANYON,
+  DESERT_LAYOUT,
   RIFLE,
   SIM,
   WIND,
@@ -27,6 +28,7 @@ import { BulletRenderer } from "./ballistics/BulletRenderer";
 import { BulletSim } from "./ballistics/BulletSim";
 import type { BulletImpact } from "./ballistics/BulletSim";
 import { FixedStepLoop } from "./core/Loop";
+import { Editor } from "./editor/Editor";
 import { KeyboardMouseInput } from "./core/KeyboardMouseInput";
 import { loadAssets } from "./core/Assets";
 import { GameRenderer } from "./core/Renderer";
@@ -103,7 +105,16 @@ async function start(): Promise<void> {
     rocks: map.rocks,
     crates: map.crates,
     rockMeshes: assets.rocks.map((r) => r.mesh),
+    models: map.models,
+    modelMeshes: new Map([...assets.models].map(([id, m]) => [id, m.mesh])),
   };
+  // Solid placed models block walking like crates do (their box, D-054).
+  const walkBlockers = [
+    ...map.crates,
+    ...map.models
+      .filter((m) => m.collision === "solid")
+      .map((m) => ({ box: { center: m.center, half: m.half, rotY: m.rotY }, lean: 0, variant: 0 })),
+  ];
 
   // Graphics quality: automatic by measured frame rate (D-016); F9 cycles it by hand.
   const requested = params.get("q");
@@ -126,7 +137,7 @@ async function start(): Promise<void> {
     zone,
     world.grid,
     map.rocks.map((r) => r.collider),
-    map.crates,
+    walkBlockers,
   );
   const breath = new Breath();
   const scope = new ScopeView(scopeZoomRange(map));
@@ -138,6 +149,19 @@ async function start(): Promise<void> {
 
   const matchSeed = randomSeed();
   const playerSeed = randomSeed();
+  // Map editor (D-049): development builds only, F2. It can only save through the dev server.
+  const editor = import.meta.env.DEV
+    ? new Editor({
+        canvas: gfx.canvas,
+        camera: gfx.camera,
+        scene: gfx.scene,
+        world,
+        layout: DESERT_LAYOUT,
+        heightAt: map.heightAt,
+        onToggle: (on) => input.setSuspended(on),
+      })
+    : null;
+
   const bullets = new BulletSim(colliders, (t) => targets.hitboxesAt(t), matchSeed);
   const tracers = new BulletRenderer();
   gfx.scene.add(tracers.group);
@@ -193,7 +217,7 @@ async function start(): Promise<void> {
       audio.playAtDistance(sounds?.impactBody ?? null, heardFrom, 1.6, pan);
     } else {
       const buffer =
-        impact.kind === "terrain"
+        impact.kind === "terrain" || impact.kind === "model"
           ? sounds?.impactGround
           : impact.kind === "crate"
             ? sounds?.impactWood
@@ -205,6 +229,10 @@ async function start(): Promise<void> {
   const loop = new FixedStepLoop(
     {
       update: (dt) => {
+        if (editor?.active) {
+          editor.update(dt);
+          return;
+        }
         const cmd = input.poll(dt);
         scoped = cmd.scoped;
         creeping = cmd.scoped && (cmd.moveX !== 0 || cmd.moveZ !== 0);
@@ -247,6 +275,12 @@ async function start(): Promise<void> {
         simTime += dt;
       },
       render: (alpha, frameSeconds) => {
+        if (editor?.active) {
+          world.update(gfx.camera.position);
+          gfx.render();
+          if (hint) hint.hidden = true;
+          return;
+        }
         const sway = currentSway();
         player.applyToCamera(gfx.camera, alpha, { yaw: sway.yaw, pitch: sway.pitch + recoil });
         if (Math.abs(gfx.camera.fov - scope.fovDeg) > 1e-4) {

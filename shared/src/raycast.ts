@@ -11,6 +11,8 @@ import {
   segmentOrientedBox,
 } from "./geometry";
 import type { CrateProp, RockProp, WallProp } from "./maps";
+import { segmentModel } from "./models";
+import type { ModelProp } from "./models";
 import { segmentRockMesh } from "./rockMesh";
 import type { RockMesh } from "./rockMesh";
 import type { Vec3 } from "./messages";
@@ -28,9 +30,13 @@ export interface WorldColliders {
   rockMeshes?: readonly RockMesh[];
   /** Crates: seen by the rangefinder, but bullets pass through them (see traceCrates). */
   crates?: readonly CrateProp[];
+  /** Placed models (D-054); only "solid" ones stop rays. */
+  models?: readonly ModelProp[];
+  /** Exact model shapes by model type id, in the model's unit frame (-1..1). */
+  modelMeshes?: ReadonlyMap<string, RockMesh>;
 }
 
-export type RayHitKind = "terrain" | "wall" | "rock" | "crate";
+export type RayHitKind = "terrain" | "wall" | "rock" | "crate" | "model";
 
 export interface RayHit {
   distance: number;
@@ -74,6 +80,10 @@ export function traceSegment(
   for (const r of world.rocks) {
     const t = segmentRock(world, a, b, r);
     if (t !== null && (best === null || t < best.t)) best = { t, kind: "rock" };
+  }
+  for (const m of world.models ?? []) {
+    const t = segmentModel(a, b, m, world.modelMeshes?.get(m.type));
+    if (t !== null && (best === null || t < best.t)) best = { t, kind: "model" };
   }
   const tt = segmentTerrain(world.grid, a, b, terrainStepM);
   if (tt !== null && (best === null || tt < best.t)) best = { t: tt, kind: "terrain" };
@@ -132,6 +142,13 @@ export function raycastWorld(
     if (t !== null && t < bestT) {
       bestT = t;
       kind = "crate";
+    }
+  }
+  for (const m of world.models ?? []) {
+    const t = segmentModel(origin, end, m, world.modelMeshes?.get(m.type));
+    if (t !== null && t < bestT) {
+      bestT = t;
+      kind = "model";
     }
   }
   // Only search the terrain up to the nearest prop hit.

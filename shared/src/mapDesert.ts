@@ -119,7 +119,8 @@ function heightAt(x: number, z: number): number {
  * Props come from the hand-editable layout file (D-049): the north half, mirrored to the
  * south half. Edit it with the in-game editor, not by hand.
  */
-const props = propsFromLayout(parseLayout(layoutFile), heightAt);
+export const DESERT_LAYOUT = parseLayout(layoutFile);
+const props = propsFromLayout(DESERT_LAYOUT, heightAt);
 
 export const DESERT_CANYON: MapDef = {
   id: "desert-canyon",
@@ -131,6 +132,7 @@ export const DESERT_CANYON: MapDef = {
   rocks: props.rocks,
   crates: props.crates,
   shrubs: props.shrubs,
+  models: props.models,
   atmosphere: {
     skyZenith: 0x5f8fc4,
     skyHorizon: 0xe6d6bb,

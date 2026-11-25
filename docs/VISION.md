@@ -38,6 +38,14 @@ The audience includes people with weak PCs and phones. When visual fidelity
 conflicts with a smooth frame rate on weak devices, frame rate wins.
 The feel comes from mechanics, sound, and timing, not from expensive graphics.
 
+## Art direction: stylized (D-055)
+One Shot looks stylized, not photoreal: clean shapes, readable colors, light textures, one
+consistent kit-based look for every prop. The simulation stays real (bullet drop, wind, sound
+delay, breath); only the look is simplified. Reasons: fast loading on the web, smooth on weak
+PCs and phones, the same picture for every player (no advantage from high settings), clear
+reading of a distant enemy, and props from whole consistent kits instead of one asset at a
+time. Mixing photoreal and stylized assets is not allowed.
+
 ## Feel gate (pending owner approval, see DECISIONS.md D-002)
 At the end of phases 1, 2, 3, and 7 the owner answers one question:
 "Does this feel as tense and thrilling as the reference?"

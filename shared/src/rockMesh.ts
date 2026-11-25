@@ -1,12 +1,12 @@
 /**
  * Exact rock collision from the rock's own triangles (D-038). A rock is a unit-sized mesh
  * (every axis spans -1..1) that is moved by the map's rock data: scaled by (radiusXZ, radiusY,
- * radiusXZ), turned around Y by rotY, and placed at the collider center. A bullet, laser, or
+ * radiusXZ), turned by rotY (and tilted by rotX, rotZ, D-051), and placed at the collider center. A bullet, laser, or
  * line of sight is moved into that unit frame and tested against the triangles, so a gap that
  * looks open IS open. The old ellipsoid stays only as a fast first check and as the fallback
  * when no rock model is loaded.
  */
-import { toBoxLocal } from "./geometry";
+import { toRotatedLocal } from "./geometry";
 import type { Vec3 } from "./messages";
 import type { RockProp } from "./maps";
 
@@ -54,10 +54,14 @@ export function createRockMesh(triangles: ArrayLike<number>, aspect = 1): RockMe
 /** Moves a world point into a rock's unit frame. */
 function toRockLocal(rock: RockProp, p: Vec3, aspect: number): Vec3 {
   const c = rock.collider;
-  const l = toBoxLocal(rock.rotY, p.x - c.center.x, p.z - c.center.z);
+  const l = toRotatedLocal(rock.rotX ?? 0, rock.rotY, rock.rotZ ?? 0, {
+    x: p.x - c.center.x,
+    y: p.y - c.center.y,
+    z: p.z - c.center.z,
+  });
   return {
     x: l.x / c.radiusXZ,
-    y: (p.y - c.center.y) / rockHalfHeight(rock, aspect),
+    y: l.y / rockHalfHeight(rock, aspect),
     z: l.z / c.radiusXZ,
   };
 }
@@ -90,8 +94,18 @@ function segmentBox(a: Vec3, b: Vec3, min: Vec3, max: Vec3): boolean {
  * @returns t in [0, 1], or null if the segment misses every triangle.
  */
 export function segmentRockMesh(a: Vec3, b: Vec3, rock: RockProp, mesh: RockMesh): number | null {
-  const la = toRockLocal(rock, a, mesh.aspect);
-  const lb = toRockLocal(rock, b, mesh.aspect);
+  return segmentUnitMesh(
+    toRockLocal(rock, a, mesh.aspect),
+    toRockLocal(rock, b, mesh.aspect),
+    mesh,
+  );
+}
+
+/**
+ * First hit of segment la->lb, given in a mesh's own unit frame, with its triangles.
+ * Shared by rocks and placed models (D-054). @returns t in [0, 1] or null.
+ */
+export function segmentUnitMesh(la: Vec3, lb: Vec3, mesh: RockMesh): number | null {
   if (!segmentBox(la, lb, mesh.min, mesh.max)) return null;
   const dx = lb.x - la.x;
   const dy = lb.y - la.y;

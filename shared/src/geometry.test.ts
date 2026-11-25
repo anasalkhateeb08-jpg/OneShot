@@ -6,6 +6,8 @@ import {
   segmentEllipsoid,
   segmentOrientedBox,
   segmentSphere,
+  toBoxLocal,
+  toRotatedLocal,
   wrapAngle,
   yawPitchFromDirection,
 } from "./geometry";
@@ -101,5 +103,22 @@ describe("createRng", () => {
     const t = segmentOrientedBox({ x: 0, y: 1, z: -5 }, { x: 0, y: 1, z: 5 }, box);
     expect(t).not.toBeNull();
     expect((t ?? 0) * 10).toBeCloseTo(3, 6);
+  });
+});
+
+describe("toRotatedLocal (D-051)", () => {
+  it("matches toBoxLocal when there is no tilt", () => {
+    const a = toRotatedLocal(0, 0.7, 0, { x: 1.5, y: 2, z: -0.4 });
+    const b = toBoxLocal(0.7, 1.5, -0.4);
+    expect(a.x).toBeCloseTo(b.x);
+    expect(a.y).toBeCloseTo(2);
+    expect(a.z).toBeCloseTo(b.z);
+  });
+
+  it("undoes a tilt: world up is the rock's own -Z after a quarter turn around X", () => {
+    const l = toRotatedLocal(Math.PI / 2, 0, 0, { x: 0, y: 1, z: 0 });
+    expect(l.x).toBeCloseTo(0);
+    expect(l.y).toBeCloseTo(0);
+    expect(l.z).toBeCloseTo(-1);
   });
 });

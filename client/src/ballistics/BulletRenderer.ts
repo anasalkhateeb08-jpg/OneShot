@@ -16,6 +16,7 @@ const PUFF_COLORS: Record<ImpactKind, number> = {
   rock: 0x9a8a78,
   wall: 0xb8a58a,
   crate: 0xa07a48,
+  model: 0xc2ad86,
   body: 0x8a1010,
 };
 

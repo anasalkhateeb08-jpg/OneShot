@@ -12,6 +12,7 @@ export * from "./terrain";
 export * from "./maps";
 export * from "./mapDesert";
 export * from "./mapLayout";
+export * from "./models";
 export * from "./movement";
 export * from "./raycast";
 export * from "./rockMesh";

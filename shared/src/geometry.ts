@@ -199,6 +199,25 @@ export function toBoxLocal(rotY: number, dx: number, dz: number): { x: number; z
 }
 
 /**
+ * World offset to an object's own axes when the object is turned by Euler angles in Y, X, Z
+ * order (Three.js order "YXZ": first around Y, then tilted around its X, then its Z). With
+ * rotX = rotZ = 0 this is the same as `toBoxLocal` (D-051).
+ */
+export function toRotatedLocal(rotX: number, rotY: number, rotZ: number, d: Vec3): Vec3 {
+  const cy = Math.cos(rotY);
+  const sy = Math.sin(rotY);
+  const x1 = d.x * cy - d.z * sy;
+  const z1 = d.x * sy + d.z * cy;
+  const cx = Math.cos(rotX);
+  const sx = Math.sin(rotX);
+  const y2 = d.y * cx + z1 * sx;
+  const z2 = -d.y * sx + z1 * cx;
+  const cz = Math.cos(rotZ);
+  const sz = Math.sin(rotZ);
+  return { x: x1 * cz + y2 * sz, y: -x1 * sz + y2 * cz, z: z2 };
+}
+
+/**
  * First intersection of segment a->b with an oriented box (the segment is moved into the box's
  * own frame, then tested against an axis-aligned box).
  * @returns t in [0, 1] (0 if a is inside), or null if no hit.

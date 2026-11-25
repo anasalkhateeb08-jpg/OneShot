@@ -3,6 +3,7 @@
  * colliders, decoration, and atmosphere. A new map adds data and assets, not game code.
  * Shared because the server needs the same terrain, zones, and colliders as the client.
  */
+import type { ModelProp } from "./models";
 import { smoothstep } from "./noise";
 import type { Aabb, Ellipsoid, OrientedBox } from "./geometry";
 import type { GridSpec } from "./terrain";
@@ -37,6 +38,9 @@ export interface RockProp {
   variant: number;
   /** Visual rotation around Y. */
   rotY: number;
+  /** Tilt around the rock's own X, then Z axis (radians, default 0; D-051). */
+  rotX?: number;
+  rotZ?: number;
 }
 
 /**
@@ -84,6 +88,8 @@ export interface MapDef {
   rocks: readonly RockProp[];
   crates: readonly CrateProp[];
   shrubs: readonly ShrubProp[];
+  /** Placed models: sandbags and other props from Megascans (D-054). */
+  models: readonly ModelProp[];
   atmosphere: Atmosphere;
 }
 

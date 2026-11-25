@@ -1,6 +1,15 @@
 import * as THREE from "three/webgpu";
 import { buildHeightGrid } from "@oneshot/shared";
-import type { HeightGrid, MapDef, PlayerZone, Vec3 } from "@oneshot/shared";
+import type {
+  CrateProp,
+  HeightGrid,
+  MapDef,
+  ModelProp,
+  PlayerZone,
+  RockProp,
+  ShrubProp,
+  Vec3,
+} from "@oneshot/shared";
 import type { GameAssets } from "../core/Assets";
 import type { QualityPreset } from "../gfx/Quality";
 import { createProps } from "./Props";
@@ -20,6 +29,15 @@ export interface World {
   setQuality(preset: QualityPreset): void;
   /** A bullet went through a crate: make see-through holes where it entered and left. */
   perforateCrate(index: number, entry: Vec3, exit?: Vec3): void;
+  /** The group holding all props (the editor picks from it). */
+  readonly propsGroup: THREE.Group;
+  /** Redraws all props from new lists (map editor, D-049). Collision is not changed. */
+  rebuildProps(props: {
+    rocks: RockProp[];
+    crates: CrateProp[];
+    shrubs: ShrubProp[];
+    models: ModelProp[];
+  }): void;
   dispose(): void;
 }
 
@@ -77,11 +95,25 @@ export function buildWorld(
   const horizon = createHorizonMesh(map.heightAt, atm);
   scene.add(horizon);
 
-  const props = createProps(map, assets.rocks, playerZone);
+  let props = createProps(map, assets.rocks, playerZone, assets.models);
   scene.add(props.group);
+  let shrubsVisible = true;
 
   return {
     grid,
+    get propsGroup(): THREE.Group {
+      return props.group;
+    },
+    rebuildProps(next): void {
+      scene.remove(props.group);
+      props.group.traverse((o) => {
+        if (o instanceof THREE.InstancedMesh) o.dispose();
+      });
+      props.dispose();
+      props = createProps({ ...map, ...next }, assets.rocks, playerZone, assets.models);
+      if (props.shrubs) props.shrubs.visible = shrubsVisible;
+      scene.add(props.group);
+    },
     update(cameraPosition: THREE.Vector3): void {
       sky.follow(cameraPosition);
       // The shadow map covers a near range around the player (master section 9). Its center
@@ -106,6 +138,7 @@ export function buildWorld(
         // The renderer's shadow node resizes its map to mapSize on the next frame.
         sun.shadow.mapSize.set(shadowMapSize, shadowMapSize);
       }
+      shrubsVisible = preset.shrubs;
       if (props.shrubs) props.shrubs.visible = preset.shrubs;
     },
     dispose(): void {

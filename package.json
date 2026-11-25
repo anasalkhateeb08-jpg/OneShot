@@ -23,7 +23,8 @@
     "check": "npm run typecheck && npm run lint && npm run format:check && npm run test",
     "assets": "node tools/assets/fetch-assets.mjs",
     "assets:list": "node tools/assets/list-models.mjs",
-    "assets:rocks": "node tools/assets/use-pro-rocks.mjs"
+    "assets:rocks": "node tools/assets/use-pro-rocks.mjs",
+    "assets:models": "node tools/assets/use-pro-models.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

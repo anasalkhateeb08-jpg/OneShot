@@ -34,6 +34,8 @@ export class KeyboardMouseInput implements InputSource {
   private zoomDelta = 0;
   private cycleZoom = false;
   private readonly disposers: Array<() => void> = [];
+  /** While true (map editor open, D-049) this input ignores the keyboard and mouse. */
+  private suspended = false;
 
   constructor(
     private readonly element: HTMLElement,
@@ -53,6 +55,15 @@ export class KeyboardMouseInput implements InputSource {
     this.listen(document, "pointerlockchange", () => {
       if (!this.isLocked()) this.releaseAll();
     });
+  }
+
+  /** Turns the game controls off (map editor) or back on. Releases the mouse when turning off. */
+  setSuspended(suspended: boolean): void {
+    this.suspended = suspended;
+    if (suspended) {
+      this.releaseAll();
+      if (this.isLocked()) document.exitPointerLock();
+    }
   }
 
   /** True while the mouse is captured by the game. */
@@ -127,7 +138,7 @@ export class KeyboardMouseInput implements InputSource {
   }
 
   private onKeyDown(e: KeyboardEvent): void {
-    if (!this.isLocked()) return;
+    if (this.suspended || !this.isLocked()) return;
     this.keys.add(e.code);
     switch (e.code) {
       case "KeyC":
@@ -169,6 +180,7 @@ export class KeyboardMouseInput implements InputSource {
   }
 
   private onMouseDown(e: MouseEvent): void {
+    if (this.suspended) return;
     if (!this.isLocked()) {
       void this.element.requestPointerLock();
       return;

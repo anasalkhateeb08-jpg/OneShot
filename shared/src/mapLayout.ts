@@ -7,6 +7,8 @@
  */
 import { mirrorCrate, mirrorXZ } from "./maps";
 import type { CrateProp, RockProp, ShrubProp } from "./maps";
+import { modelType } from "./models";
+import type { ModelProp } from "./models";
 
 /** Fraction of a rock's height kept above the ground by default (the rest is buried). */
 export const ROCK_ABOVE_GROUND = 0.65;
@@ -19,6 +21,9 @@ export interface LayoutRock {
   /** Extra height over the default half-buried position (meters, may be negative). */
   lift: number;
   rotY: number;
+  /** Tilt around the rock's own X, then Z axis (radians, optional, D-051). */
+  rotX?: number;
+  rotZ?: number;
   variant: number;
 }
 
@@ -39,6 +44,19 @@ export interface LayoutShrub {
   scale: number;
 }
 
+/** A placed model (D-054). Its bottom sits `lift` meters above the ground under its center. */
+export interface LayoutModel {
+  type: string;
+  x: number;
+  z: number;
+  lift: number;
+  rotY: number;
+  rotX?: number;
+  rotZ?: number;
+  /** Size multiplier per axis (1 = the model's real size). */
+  scale: { x: number; y: number; z: number };
+}
+
 export interface MapLayout {
   version: 1;
   /** Id of the map this layout belongs to. */
@@ -46,6 +64,8 @@ export interface MapLayout {
   rocks: LayoutRock[];
   crates: LayoutCrate[];
   shrubs: LayoutShrub[];
+  /** Placed models (D-054); missing in older files, read as empty. */
+  models: LayoutModel[];
 }
 
 export type HeightFn = (x: number, z: number) => number;
@@ -57,6 +77,8 @@ export function rockFromLayout(r: LayoutRock, heightAt: HeightFn): RockProp {
     collider: { center: { x: r.x, y, z: r.z }, radiusXZ: r.radiusXZ, radiusY: r.radiusY },
     variant: r.variant,
     rotY: r.rotY,
+    ...(r.rotX ? { rotX: r.rotX } : {}),
+    ...(r.rotZ ? { rotZ: r.rotZ } : {}),
   };
 }
 
@@ -79,6 +101,30 @@ export function shrubFromLayout(s: LayoutShrub, heightAt: HeightFn): ShrubProp {
   return { pos: { x: s.x, y: heightAt(s.x, s.z), z: s.z }, scale: s.scale };
 }
 
+/** World model from a layout entry (null for an unknown model type). */
+export function modelFromLayout(m: LayoutModel, heightAt: HeightFn): ModelProp | null {
+  const type = modelType(m.type);
+  if (!type) return null;
+  const half = {
+    x: (type.size.x * m.scale.x) / 2,
+    y: (type.size.y * m.scale.y) / 2,
+    z: (type.size.z * m.scale.z) / 2,
+  };
+  return {
+    type: m.type,
+    center: { x: m.x, y: heightAt(m.x, m.z) + m.lift + half.y, z: m.z },
+    half,
+    rotY: m.rotY,
+    ...(m.rotX ? { rotX: m.rotX } : {}),
+    ...(m.rotZ ? { rotZ: m.rotZ } : {}),
+    collision: type.collision,
+  };
+}
+
+export function mirrorModel(m: ModelProp): ModelProp {
+  return { ...m, center: mirrorXZ(m.center), rotY: m.rotY + Math.PI };
+}
+
 export function mirrorRock(r: RockProp): RockProp {
   return {
     ...r,
@@ -95,6 +141,7 @@ export interface LayoutProps {
   rocks: RockProp[];
   crates: CrateProp[];
   shrubs: ShrubProp[];
+  models: ModelProp[];
 }
 
 /**
@@ -105,10 +152,15 @@ export function propsFromLayout(layout: MapLayout, heightAt: HeightFn): LayoutPr
   const rocks = layout.rocks.map((r) => rockFromLayout(r, heightAt));
   const crates = layout.crates.map((c) => crateFromLayout(c, heightAt));
   const shrubs = layout.shrubs.map((s) => shrubFromLayout(s, heightAt));
+  // An unknown model type (e.g. removed from MODEL_TYPES) produces no model on either side.
+  const models = layout.models
+    .map((m) => modelFromLayout(m, heightAt))
+    .filter((m): m is ModelProp => m !== null);
   return {
     rocks: [...rocks, ...rocks.map(mirrorRock)],
     crates: [...crates, ...crates.map(mirrorCrate)],
     shrubs: [...shrubs, ...shrubs.map(mirrorShrub)],
+    models: [...models, ...models.map(mirrorModel)],
   };
 }
 
@@ -136,11 +188,24 @@ export function parseLayout(data: unknown): MapLayout {
     });
     return arr as Record<string, unknown>[];
   };
-  list("rocks", ["x", "z", "radiusXZ", "radiusY", "lift", "rotY", "variant"]);
+  list("rocks", ["x", "z", "radiusXZ", "radiusY", "lift", "rotY", "variant"]).forEach((r, i) => {
+    for (const f of ["rotX", "rotZ"]) {
+      if (r[f] !== undefined && !isNum(r[f])) fail(`rocks[${i}].${f} is not a number`);
+    }
+  });
   list("crates", ["x", "z", "base", "rotY", "lean", "variant"]).forEach((c, i) => {
     const h = c.half as Record<string, unknown> | undefined;
     if (!h || !isNum(h.x) || !isNum(h.y) || !isNum(h.z)) fail(`crates[${i}].half is invalid`);
   });
   list("shrubs", ["x", "z", "scale"]);
+  if (d.models === undefined) d.models = [];
+  list("models", ["x", "z", "lift", "rotY"]).forEach((m, i) => {
+    if (typeof m.type !== "string") fail(`models[${i}].type is missing`);
+    const s = m.scale as Record<string, unknown> | undefined;
+    if (!s || !isNum(s.x) || !isNum(s.y) || !isNum(s.z)) fail(`models[${i}].scale is invalid`);
+    for (const f of ["rotX", "rotZ"]) {
+      if (m[f] !== undefined && !isNum(m[f])) fail(`models[${i}].${f} is not a number`);
+    }
+  });
   return data as MapLayout;
 }

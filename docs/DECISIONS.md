@@ -403,3 +403,72 @@ Reference values re-verified against the independent fine-step solver. Revert = 
   stored relative to the ground) through `shared/src/mapLayout.ts`, instead of being generated
   by code. The file was generated from the old code: the map is identical (largest difference
   0.5 mm). Steps 2 and 3: edit mode, then saving.
+- **D-049 steps 2 and 3 (editor and saving).** `client/src/editor/Editor.ts`, development builds
+  only, opened and closed with F2. Right mouse held + W A S D flies (Q down, E up, Shift fast);
+  left click selects; left drag moves a prop over the ground; D + left drag copies it; W, E, R
+  switch the arrows between move, rotate (vertical axis only) and resize (Three.js
+  TransformControls); Delete removes; Ctrl+Z undoes; Esc deselects. Only the owner's (north)
+  half can be selected; the mirrored half redraws live. Ctrl+S posts the layout to the dev
+  server (`client/vite.config.ts` plugin), which checks it with `parseLayout` and writes
+  `shared/src/layouts/desert-canyon.json`; Vite then reloads the game, which rebuilds the
+  collision from the new file, and the editor reopens at the same view. Leaving with unsaved
+  changes needs a second F2 and restores the saved layout. The game controls are suspended
+  while the editor is open. Note: the map test that keeps crates out of rocks also checks
+  hand-placed layouts.
+
+- **D-050 Editor camera like Maya (owner request).** The editor camera no longer flies with the
+  game keys (W A S D do nothing for the camera; the game controls stay off). Mouse wheel moves
+  toward or away from the point under the cursor; Ctrl + left drag turns around the selected
+  prop (or the point clicked); Alt + left drag slides the view left, right, up and down; F
+  frames the selected prop. Props are unchanged: click selects, drag moves over the ground,
+  D + drag copies, W / E / R switch the arrows, F2 enters and leaves. Alt alone no longer
+  opens the browser menu while the editor is open, and Ctrl + wheel no longer zooms the page.
+
+- **D-051 Copy fix and free rock rotation (owner request).** D + drag did not copy when the prop
+  was already selected: the move arrows sit on top of the prop and took the click. While D is
+  held the arrows now step aside, so the click always copies. Rocks can now be turned on every
+  axis (on their side, upside down): the layout keeps optional `rotX` and `rotZ` (radians,
+  Three.js order "YXZ"); the drawn rock and the exact triangle collision of bullets, laser and
+  line of sight follow the full rotation (`toRotatedLocal`, checked against the rotation
+  matrix to 1e-15). Limits, said plainly: the player's walking collision with a tilted rock
+  still uses the rock's upright ellipsoid (close, not exact); crates and shrubs still turn
+  only around the vertical axis (tilting crates needs a new crate collision, a later step).
+
+- **D-052 Resize on S, Shift for the whole shape (owner request).** S switches the arrows to
+  resize (R still works). Dragging one handle stretches the prop along that axis only; holding
+  Shift while dragging grows or shrinks the whole shape and keeps its proportions.
+
+- **D-053 Leaving the editor saves; T + drag lays crates like bricks (owner request).** F2 now
+  saves the changes and goes back to the game, which reloads with the new layout and its
+  collision (before, leaving without Ctrl+S threw the changes away). After any save the page
+  is reloaded explicitly, not only when Vite notices the file. T + left drag on a crate makes
+  a copy that sits flush against the face of the crate that best matches the mouse direction:
+  dragging up stacks it on top, dragging sideways puts it beside it, same turn and size, at
+  the same height in the world, so rows stay straight. D + drag stays the free copy.
+
+- **D-054 Placed models: a general prop system for the new environment (owner approved "start
+  the environment").** Reference: a desert military outpost (sandbags, barbed wire, poles and
+  wires, mud houses). Every such prop is a *model type* in `shared/src/models.ts` (id = the
+  `.assets-pro` folder, real size in meters, collision "solid" or "none"). The layout file gets
+  a `models` list (type, x, z, lift, rotY, optional rotX/rotZ, scale per axis), mirrored like
+  everything else; older files read as an empty list. Solid models stop bullets on their own
+  triangles (the rock routine, now shared as `segmentUnitMesh`), fall back to their box, and
+  block walking with their box; impacts sound and puff like dirt. `npm run assets:models --
+  <id>` copies a Blender-made model into the game. Editor: N puts a new model under the cursor
+  (N again switches its type); models move, copy (D), lay like bricks (T), turn on every axis
+  and resize per axis like the rest. First type: Megascans "Sandbag Barrier" (2.37 x 0.53 x
+  0.38 m, solid, preview approved). Mud houses: free sources are searched first (owner did not
+  choose between free and paid). `make_rock.py` now validates each mesh before export (the
+  exporter warned "mesh is not valid"). Limits: models draw one detail level for now (the 90 m
+  / 200 m tiers come with more types); a tilted solid model blocks walking with its upright box.
+
+- **D-055 Stylized art direction (owner decision, replaces the photoreal direction of D-045
+  to D-047 and D-054's Megascans source).** Every prop costing a separate download, Blender
+  pass and patch, plus 1 to 2 MB per photoscanned prop, does not fit a web game for weak
+  devices. The game switches to a stylized look (clean shapes, readable colors, light
+  textures) built from whole consistent kits, with the realistic simulation unchanged. It
+  matches VISION's "weak hardware first" and gives every player the same picture. Kept: the
+  editor, layout files, placed-model system, collision, ballistics, sound. Retired from the
+  game (kept in the repo as tools): the Megascans rocks and the Blender photoscan pipeline.
+  Not mixed: no photoreal asset stays once the stylized kit replaces it. Next: compare 2 to 3
+  free kits (license, glTF, desert and military pieces) with pictures, owner picks one.
