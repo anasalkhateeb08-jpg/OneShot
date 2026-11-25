@@ -43,6 +43,15 @@ function triangleList(geometry: THREE.BufferGeometry): number[] {
   return out;
 }
 
+/**
+ * Keeps the normals exported by Blender (D-046): the baked normal map was made against them, so
+ * recomputing them would show seams. `scale()` already corrects them for the new proportions.
+ * Only a model without normals gets computed ones.
+ */
+function keepNormals(geometry: THREE.BufferGeometry): void {
+  if (!geometry.getAttribute("normal")) geometry.computeVertexNormals();
+}
+
 export interface GameAssets {
   ground: GroundMaps | null;
   rocks: RockAsset[];
@@ -83,7 +92,7 @@ async function loadRockLod(
     geometry.applyMatrix4(mesh.matrixWorld);
     geometry.translate(-norm.center.x, -norm.center.y, -norm.center.z);
     geometry.scale(1 / norm.width, 1 / norm.height, 1 / norm.width);
-    geometry.computeVertexNormals();
+    keepNormals(geometry);
     out = geometry;
   });
   return out;
@@ -116,7 +125,7 @@ async function loadRock(
     geometry.scale(1 / width, 1 / height, 1 / width);
     const aspect = height / width;
     norm = { center, width, height };
-    geometry.computeVertexNormals();
+    keepNormals(geometry);
     const material = Array.isArray(mesh.material) ? mesh.material[0] : mesh.material;
     if (!material) return;
     found = {

@@ -12,7 +12,7 @@ const WALL_COLORS: Record<WallMaterial, number> = {
 
 const SHRUB_COLOR = 0x6c6a3c;
 const PROCEDURAL_ROCK_VARIANTS = 3;
-/** Rocks closer than this to the player's zone cast shadows (the shadow map only covers ~60 m). */
+/** Rocks closer than this to the player's zone cast shadows (the shadow map covers ~90 m). */
 const NEAR_ROCK_M = 90;
 /** Rocks farther than this from the player's zone use the cheapest detail level. */
 const MID_ROCK_M = 200;

@@ -347,3 +347,59 @@ Reference values re-verified against the independent fine-step solver. Revert = 
   `tools/install-blender.ps1`. Candidate models are listed in `docs/POLYHAVEN_MODELS.md`
   (`npm run assets:list`). Chosen first: Namaqualand boulders for rocks (arid South African
   scans), Poly Haven wooden crates, military crates, barrels and dry plants next.
+
+- **D-046 Megascans as the main source of rocks and environment (SUPER HIGH PRO, owner
+  approved).** Epic made the full Quixel Megascans library free again on Fab in November 2026,
+  under the Fab Standard License (any engine, commercial use, no standalone redistribution of
+  the assets). Megascans is the AAA photoscan library and has a consistent desert set ("Desert
+  Western") with real cover sizes, so it replaces Poly Haven as the first choice; Poly Haven
+  stays as a fallback. The owner downloads each asset once from Fab ("fbx, High quality" zip:
+  game mesh plus 4K BaseColor, Roughness, Normal, AO). `tools/make-megascans.ps1` finds the
+  zips in Downloads and runs the same Blender tool (`make_rock.py`, now also reading .fbx with
+  loose textures): three levels (3000 / 800 / 200 triangles), normal map baked from the High
+  mesh at 2048 px, textures limited to 2048 px, ambient occlusion exported to glTF, preview on
+  the Desktop. Fab files stay out of Git (`.assets-src/`, `.assets-pro/`). Assumptions not yet
+  tested: the normal maps are OpenGL style (`-FlipGreen` if the preview lighting looks
+  inverted); the web build ships modified, incorporated copies, which is the usual reading of
+  "incorporated into a project" but has not been checked by a lawyer. Next for the web budget:
+  KTX2 textures and meshopt geometry compression.
+
+- **D-047 The Megascans rocks enter the game (owner approved the previews).** Three Desert
+  Western rocks (Rock Medium 15, Cluster Rock Medium 05, Cluster Rock Large 05) replace the
+  Poly Haven rocks as the map's three rock variants. `npm run assets:rocks`
+  (`tools/assets/use-pro-rocks.mjs`) copies their three detail levels from `.assets-pro/` to
+  `client/public/assets/rocks-pro/` and points the manifest at them; the game code that loads
+  rocks, builds the 90 m / 200 m detail tiers and the exact triangle collision is unchanged.
+  One fix in `Assets.ts`: the rock normals exported by Blender are kept instead of being
+  recomputed, because the baked normal map was made against them (recomputing showed seams).
+  `make-megascans.ps1` no longer reports Blender's normal log lines as a failure. Known limits:
+  the near rock is 1.1 to 1.7 MB with JPEG textures (KTX2 compression is the next step);
+  tangents are computed by the renderer, not exported (small shading difference, to revisit);
+  a thin dark seam shows on one edge of Cluster Rock Large 05 (bake cage, to revisit).
+
+- **D-048 Shadows that stay and are not black (owner feedback).** Three causes, three standard
+  fixes. (1) Automatic quality switched between Low (no shadows) and Medium (shadows) every few
+  seconds, so shadows appeared and vanished. Shadows are now on at every level (Low uses a 1024
+  shadow map instead of 2048, and keeps the shrubs), and the automatic mode no longer
+  ping-pongs: after a step down it needs 20 s of good frame rate to go back up, and a level it
+  had to leave twice is not tried again. (2) The sky fill was too weak for the sun (0.55 against
+  3.0), so shade was nearly black and the ground color was lost. Now 1.2 against 2.8: shade on
+  flat sand is about 40% of full sun, as in a real clear desert. Full image-based sky lighting
+  (environment map) is the higher quality ceiling and is planned after the props are done.
+  (3) The shadow area moved with every step of the camera, which makes shadow edges crawl. It
+  now moves in whole shadow-map pixels only (texel snapping), and covers 90 m around the
+  player instead of 60 m.
+
+- **D-049 In-game map editor; maps become hand-editable files (owner request).** Describing an
+  exact layout in words cannot match placing things by hand, so the owner places props himself
+  in an editor inside the game (the standard studio approach: what he sees is exactly what
+  players see, with the same lighting, shadows and collision). Design agreed with the owner:
+  press a key to enter edit mode with a free camera; click a prop to move, rotate or scale it
+  with arrows; **D + left-drag duplicates** the prop (no side panels); the owner builds only
+  his own half and the other half is ALWAYS the mirror through the map center, (x, z) ->
+  (-x, -z), so both players see the same scene from their own side (fairness); one click saves
+  the file into the project through the dev server. Step 1 (this patch): the props of the
+  desert map now come from `shared/src/layouts/desert-canyon.json` (north half only, heights
+  stored relative to the ground) through `shared/src/mapLayout.ts`, instead of being generated
+  by code. The file was generated from the old code: the map is identical (largest difference
+  0.5 mm). Steps 2 and 3: edit mode, then saving.

@@ -59,6 +59,28 @@ describe("AdaptiveQuality", () => {
     expect(QUALITY_PRESETS.low.resolutionScale).toBeLessThan(
       QUALITY_PRESETS.medium.resolutionScale,
     );
-    expect(QUALITY_PRESETS.low.shadows).toBe(false);
+    expect(QUALITY_PRESETS.low.shadowMapSize).toBeLessThan(QUALITY_PRESETS.medium.shadowMapSize);
+  });
+
+  it("stops switching back and forth between two levels (D-048)", () => {
+    const applied: QualityLevel[] = [];
+    const q = new AdaptiveQuality("medium", (l) => applied.push(l));
+    for (let round = 0; round < 6; round++) {
+      feed(q, 40, 4.5); // medium is too slow
+      feed(q, 60, 25); // low is fast enough
+    }
+    expect(q.level).toBe("low");
+    // medium, low, medium, low: two tries of medium, then it stays on low.
+    expect(applied).toEqual(["medium", "low", "medium", "low"]);
+  });
+
+  it("waits longer before going back up after a step down", () => {
+    const q = new AdaptiveQuality("medium", () => undefined);
+    feed(q, 40, 4.5);
+    expect(q.level).toBe("low");
+    feed(q, 60, 8);
+    expect(q.level).toBe("low");
+    feed(q, 60, 14);
+    expect(q.level).toBe("medium");
   });
 });

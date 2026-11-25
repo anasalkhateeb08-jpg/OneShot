@@ -1,5 +1,7 @@
 """
-Turns a detailed photoscanned Poly Haven model into game-ready levels of detail (D-045).
+Turns a detailed photoscanned model into game-ready levels of detail (D-045, D-046).
+Sources: Poly Haven (.gltf with its material) or Megascans from Fab (.fbx plus loose textures
+named *_BaseColor, *_Roughness, *_Normal, *_AO in the same folder).
 
 Run by Blender, without a window:
   blender -b -P tools/blender/make_rock.py -- <source.gltf> <out_dir> <id> <tris_hi,tris_mid,tris_lo> <bake_px>
@@ -36,10 +38,92 @@ def tri_count(obj):
     return sum(len(p.vertices) - 2 for p in obj.data.polygons)
 
 
+def find_texture(kind):
+    """Megascans: <name>_<Resolution>_<Kind>.jpg next to the fbx."""
+    folder = os.path.dirname(SRC)
+    for f in sorted(os.listdir(folder)):
+        stem, ext = os.path.splitext(f)
+        if ext.lower() in (".jpg", ".jpeg", ".png") and stem.lower().endswith("_" + kind.lower()):
+            return os.path.join(folder, f)
+    return None
+
+
+def gltf_output_group():
+    """The node group the Blender glTF exporter reads ambient occlusion from."""
+    group = bpy.data.node_groups.get("glTF Material Output")
+    if group is None:
+        group = bpy.data.node_groups.new("glTF Material Output", "ShaderNodeTree")
+    names = [item.name for item in group.interface.items_tree]
+    if "Occlusion" not in names:
+        group.interface.new_socket(name="Occlusion", in_out="INPUT", socket_type="NodeSocketFloat")
+    return group
+
+
+def megascans_material(name):
+    """Builds the PBR material from the loose Megascans textures."""
+    mat = bpy.data.materials.new(name)
+    mat.use_nodes = True
+    nt = mat.node_tree
+    bsdf = nt.nodes["Principled BSDF"]
+    bsdf.inputs["Metallic"].default_value = 0.0
+
+    def tex(kind, color):
+        path = find_texture(kind)
+        if path is None:
+            log(f"texture missing: {kind}")
+            return None
+        node = nt.nodes.new("ShaderNodeTexImage")
+        node.image = bpy.data.images.load(path)
+        node.image.colorspace_settings.name = "sRGB" if color else "Non-Color"
+        log(f"texture {kind}: {os.path.basename(path)} {node.image.size[0]}px")
+        return node
+
+    base = tex("BaseColor", True)
+    if base:
+        nt.links.new(base.outputs["Color"], bsdf.inputs["Base Color"])
+    rough = tex("Roughness", False)
+    if rough:
+        nt.links.new(rough.outputs["Color"], bsdf.inputs["Roughness"])
+    nrm = tex("Normal", False)
+    if nrm is None:
+        raise SystemExit("the Megascans download has no *_Normal texture")
+    nmap = nt.nodes.new("ShaderNodeNormalMap")
+    color_out = nrm.outputs["Color"]
+    if FLIP_GREEN:  # DirectX style normal map: invert the green channel
+        sep = nt.nodes.new("ShaderNodeSeparateColor")
+        inv = nt.nodes.new("ShaderNodeMath")
+        inv.operation = "SUBTRACT"
+        inv.inputs[0].default_value = 1.0
+        comb = nt.nodes.new("ShaderNodeCombineColor")
+        nt.links.new(color_out, sep.inputs["Color"])
+        nt.links.new(sep.outputs["Red"], comb.inputs["Red"])
+        nt.links.new(sep.outputs["Green"], inv.inputs[1])
+        nt.links.new(inv.outputs["Value"], comb.inputs["Green"])
+        nt.links.new(sep.outputs["Blue"], comb.inputs["Blue"])
+        color_out = comb.outputs["Color"]
+        log("normal map: green channel inverted (DirectX to OpenGL)")
+    nt.links.new(color_out, nmap.inputs["Color"])
+    nt.links.new(nmap.outputs["Normal"], bsdf.inputs["Normal"])
+    ao = tex("AO", False)
+    if ao:
+        out = nt.nodes.new("ShaderNodeGroup")
+        out.node_tree = gltf_output_group()
+        sep_ao = nt.nodes.new("ShaderNodeSeparateColor")
+        nt.links.new(ao.outputs["Color"], sep_ao.inputs["Color"])
+        nt.links.new(sep_ao.outputs["Red"], out.inputs["Occlusion"])
+    return mat
+
+
+FLIP_GREEN = os.environ.get("ONESHOT_FLIP_GREEN", "0") == "1"
+IS_FBX = SRC.lower().endswith(".fbx")
+
 # --- 1. Import -------------------------------------------------------------------------------
 bpy.ops.wm.read_factory_settings(use_empty=True)
 scene = bpy.context.scene
-bpy.ops.import_scene.gltf(filepath=SRC)
+if IS_FBX:
+    bpy.ops.import_scene.fbx(filepath=SRC)
+else:
+    bpy.ops.import_scene.gltf(filepath=SRC)
 meshes = [o for o in scene.objects if o.type == "MESH"]
 if not meshes:
     raise SystemExit("no mesh found in the source file")
@@ -56,6 +140,9 @@ high_tris = tri_count(high)
 log(f"original: {high_tris} triangles, {len(high.data.uv_layers)} UV layer(s)")
 if not high.data.uv_layers:
     raise SystemExit("the source model has no UV map")
+if IS_FBX:
+    high.data.materials.clear()
+    high.data.materials.append(megascans_material(f"{ROCK_ID}_source"))
 
 # Center the model on the origin (feet at z = 0 is not needed: the game normalizes the box).
 corners = [high.matrix_world @ Vector(c) for c in high.bound_box]
@@ -155,6 +242,13 @@ for lod in lods[1:]:
     lod.data.materials.append(plain)
 
 # --- 4. Export ---------------------------------------------------------------------------------
+# Web budget: textures in the game file are at most BAKE_PX (Megascans ships 4K).
+for node in final_mat.node_tree.nodes:
+    img = getattr(node, "image", None)
+    if img is not None and img.size[0] > BAKE_PX:
+        log(f"texture {img.name}: {img.size[0]} -> {BAKE_PX} px")
+        img.scale(BAKE_PX, BAKE_PX)
+
 os.makedirs(OUT_DIR, exist_ok=True)
 names = [f"{ROCK_ID}.glb", f"{ROCK_ID}_mid.glb", f"{ROCK_ID}_lo.glb"]
 for lod, fname in zip(lods, names):

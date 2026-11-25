@@ -8,7 +8,8 @@ import { Sky } from "./Sky";
 import { createHorizonMesh, createTerrainMesh } from "./Terrain";
 
 const SHADOW_MAP_SIZE = 2048;
-const SHADOW_HALF_EXTENT_M = 60;
+/** Half size of the area around the camera that receives sun shadows (D-048: was 60 m). */
+const SHADOW_HALF_EXTENT_M = 90;
 const SUN_DISTANCE_M = 250;
 
 export interface World {
@@ -65,6 +66,12 @@ export function buildWorld(
   scene.add(sun);
   scene.add(sun.target);
 
+  // Light-space axes of the shadow camera (it looks along -sunDir with world up, D-048).
+  const lightRight = new THREE.Vector3(0, 1, 0).cross(sunDir).normalize();
+  const lightUp = new THREE.Vector3().crossVectors(sunDir, lightRight).normalize();
+  const snapped = new THREE.Vector3();
+  let shadowMapSize = SHADOW_MAP_SIZE;
+
   const terrain = createTerrainMesh(grid, atm, assets.ground);
   scene.add(terrain);
   const horizon = createHorizonMesh(map.heightAt, atm);
@@ -77,13 +84,28 @@ export function buildWorld(
     grid,
     update(cameraPosition: THREE.Vector3): void {
       sky.follow(cameraPosition);
-      // The 2048 shadow map covers only a near range around the player (master section 9).
-      sun.target.position.copy(cameraPosition);
-      sun.position.copy(cameraPosition).addScaledVector(sunDir, SUN_DISTANCE_M);
+      // The shadow map covers a near range around the player (master section 9). Its center
+      // moves in whole shadow-map pixels only, so shadow edges do not crawl or shimmer while
+      // the player moves (the standard "texel snapping" fix, D-048).
+      const texel = (SHADOW_HALF_EXTENT_M * 2) / shadowMapSize;
+      const a = Math.round(cameraPosition.dot(lightRight) / texel) * texel;
+      const b = Math.round(cameraPosition.dot(lightUp) / texel) * texel;
+      const d = cameraPosition.dot(sunDir);
+      snapped
+        .copy(lightRight)
+        .multiplyScalar(a)
+        .addScaledVector(lightUp, b)
+        .addScaledVector(sunDir, d);
+      sun.target.position.copy(snapped);
+      sun.position.copy(snapped).addScaledVector(sunDir, SUN_DISTANCE_M);
     },
     perforateCrate: (index, entry, exit) => props.perforateCrate(index, entry, exit),
     setQuality(preset: QualityPreset): void {
-      sun.castShadow = preset.shadows;
+      if (preset.shadowMapSize !== shadowMapSize) {
+        shadowMapSize = preset.shadowMapSize;
+        // The renderer's shadow node resizes its map to mapSize on the next frame.
+        sun.shadow.mapSize.set(shadowMapSize, shadowMapSize);
+      }
       if (props.shrubs) props.shrubs.visible = preset.shrubs;
     },
     dispose(): void {
