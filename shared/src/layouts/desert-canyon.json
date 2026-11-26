@@ -2,7 +2,7 @@
   "version": 1,
   "map": "desert-canyon",
   "rocks": [
-    {"x":0,"z":192,"radiusXZ":3.4,"radiusY":2.6,"lift":0,"rotY":0.3,"variant":0},
+    {"x":1.166,"z":179.73,"radiusXZ":3.4,"radiusY":2.6,"lift":0,"rotY":0.3,"variant":0},
     {"x":-3.6,"z":193,"radiusXZ":1.8,"radiusY":1.4,"lift":0,"rotY":1.2,"variant":1},
     {"x":3.8,"z":191,"radiusXZ":1.6,"radiusY":1.2,"lift":0,"rotY":2.4,"variant":2},
     {"x":-18,"z":195,"radiusXZ":2.2,"radiusY":1,"lift":0,"rotY":0.8,"variant":1},
@@ -475,5 +475,18 @@
     {"x":237.796,"z":79.487,"scale":1.425},
     {"x":-266.94,"z":17.067,"scale":1.072},
     {"x":143.345,"z":4.556,"scale":0.673}
+  ],
+  "models": [
+    {"type":"mil_hummer_003","x":1.913,"z":208.563,"lift":0,"rotY":-0.3476,"scale":{"x":1,"y":1,"z":1}},
+    {"type":"lib_military_barrier_006","x":-3.719,"z":195.502,"lift":0,"rotY":0.0014,"scale":{"x":1,"y":1,"z":1}},
+    {"type":"lib_military_protection_001","x":-7.475,"z":195.999,"lift":0,"rotY":0.1604,"scale":{"x":1,"y":1,"z":1}},
+    {"type":"lib_military_barrier_004","x":-7.885,"z":195.819,"lift":0,"rotY":0.1762,"scale":{"x":1,"y":1,"z":1}},
+    {"type":"lib_military_radiostation_001","x":8,"z":205,"lift":0,"rotY":0.0002,"scale":{"x":1,"y":1,"z":1}},
+    {"type":"lib_military_barrier_006","x":3.636,"z":192.531,"lift":0,"rotY":0.0006,"scale":{"x":1,"y":1,"z":1}},
+    {"type":"lib_military_barrier_007","x":5.023,"z":167.216,"lift":0,"rotY":0.0006,"scale":{"x":1,"y":1,"z":1}},
+    {"type":"lib_military_cactus_001","x":-2.65,"z":199.057,"lift":0,"rotY":0.0012,"scale":{"x":1,"y":1,"z":1}},
+    {"type":"lib_military_cactus_001","x":-0.536,"z":198.098,"lift":0,"rotY":0.0013,"scale":{"x":1,"y":1,"z":1}},
+    {"type":"lib_military_target_001","x":1.841,"z":193.138,"lift":0,"rotY":0.0014,"scale":{"x":1,"y":1,"z":1}},
+    {"type":"lib_military_barrier_008","x":0.853,"z":199.606,"lift":0,"rotY":-0.0072,"scale":{"x":1,"y":1,"z":1}}
   ]
 }

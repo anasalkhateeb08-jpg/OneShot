@@ -26,6 +26,7 @@ import sys
 
 import bmesh
 import bpy
+import numpy as np
 from mathutils import Vector
 from mathutils.bvhtree import BVHTree
 
@@ -39,6 +40,8 @@ PREVIEW = argv[6]
 
 # Remesh detail: the voxel is this fraction of the model's largest side.
 VOXEL_FRACTION = 1 / 140
+# Flat-color look (D-061): one clean color per face, sharp facets, no texture. Default on.
+FLAT = os.environ.get("ONESHOT_FLAT", "1") == "1"
 # Check: 90% of sampled points must be closer than this fraction of the largest side.
 MAX_DRIFT = 0.035
 
@@ -223,6 +226,58 @@ for i, target in enumerate(TRIS[1:], start=1):
     lod.data.validate(verbose=False)
     log(f"{lod.name}: {tri_count(lod)} triangles")
     lods.append(lod)
+
+# --- 4b. Flat colors (D-061) --------------------------------------------------------------------
+def flat_colors(obj, img):
+    """One color per face, read from the baked color under the face, with the painted-in
+    shading of the AI picture evened out (the game adds its own light and shadow)."""
+    w, h = img.size
+    arr = np.empty(w * h * 4, dtype=np.float32)
+    img.pixels.foreach_get(arr)
+    arr = arr.reshape(h, w, 4)
+    mesh = obj.data
+    uv = mesh.uv_layers.active.data
+    cols = []
+    for poly in mesh.polygons:
+        loops = list(poly.loop_indices)
+        cu = sum(uv[i].uv.x for i in loops) / len(loops)
+        cv = sum(uv[i].uv.y for i in loops) / len(loops)
+        pts = [(cu, cv)] + [((uv[i].uv.x + 2 * cu) / 3, (uv[i].uv.y + 2 * cv) / 3) for i in loops]
+        samples = []
+        for u, v in pts:
+            x = min(w - 1, max(0, int(u * (w - 1))))
+            y = min(h - 1, max(0, int(v * (h - 1))))
+            samples.append(arr[y, x, :3])
+        cols.append(np.mean(samples, axis=0))
+    cols = np.array(cols)
+    lum = cols @ np.array([0.2126, 0.7152, 0.0722])
+    bright = np.percentile(lum, 75)
+    factor = np.clip((lum + 0.6 * (bright - lum)) / np.maximum(lum, 1e-3), 0.7, 1.8)
+    cols = cols * factor[:, None]
+    mean = cols.mean(axis=1, keepdims=True)
+    cols = np.clip(mean + (cols - mean) * 1.1, 0.0, 1.0)
+    attr = mesh.color_attributes.new(name="Color", type="BYTE_COLOR", domain="CORNER")
+    for poly, c in zip(mesh.polygons, cols):
+        poly.use_smooth = False
+        for li in poly.loop_indices:
+            attr.data[li].color_srgb = (float(c[0]), float(c[1]), float(c[2]), 1.0)
+    mat = bpy.data.materials.new(f"{obj.name}_flat")
+    mat.use_nodes = True
+    mnt = mat.node_tree
+    principled = mnt.nodes["Principled BSDF"]
+    principled.inputs["Metallic"].default_value = 0.0
+    principled.inputs["Roughness"].default_value = 0.9
+    vc = mnt.nodes.new("ShaderNodeVertexColor")
+    vc.layer_name = "Color"
+    mnt.links.new(vc.outputs["Color"], principled.inputs["Base Color"])
+    mesh.materials.clear()
+    mesh.materials.append(mat)
+
+
+if FLAT:
+    for lod in lods:
+        flat_colors(lod, color_img)
+    log("flat colors: one color per face, sharp facets, no texture")
 
 # --- 5. Check: does the game model follow the original? ----------------------------------------
 depsgraph = bpy.context.evaluated_depsgraph_get()

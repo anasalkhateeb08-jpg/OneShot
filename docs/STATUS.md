@@ -1,6 +1,6 @@
 # STATUS
 
-Last updated: 2026-11-23 20:59
+Last updated: 2026-11-26 19:13
 
 ## Phase
 
@@ -8,12 +8,12 @@ Phase 1: Core feel (step 1f)
 
 ## Status
 
-Done and checked: rocks solid for walking, creeping while scoped, wooden crates (bullets pass through, see-through holes, 5 rotating impact effects), exact rock-mesh collision for shots. 125 shared, 19 client, 5 server tests green.
+Model library D-062 and patches 35-39 applied; open bug: scope overlay shows after placing a library model
 
 ## Decision
 
-D-031 to D-038 recorded. Patch-only delivery rule added.
+D-059 to D-062: AI models, flat colors, model library, crop tool
 
 ## Next step
 
-Visible zone-edge markers (D-033) and aim arc (D-034); then post-processing and measurements (1e part 2).
+Fix scope overlay after library place

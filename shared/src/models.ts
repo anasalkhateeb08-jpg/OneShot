@@ -10,6 +10,7 @@ import type { Vec3 } from "./messages";
 import { segmentUnitMesh } from "./rockMesh";
 import type { RockMesh } from "./rockMesh";
 import aiKit from "./kits/ai.json";
+import libraryKit from "./kits/library.json";
 import militaryFreeKit from "./kits/military-free.json";
 
 /** solid: stops bullets and players (sandbags). none: decoration only (wires, debris). */
@@ -52,6 +53,8 @@ export const MODEL_TYPES: readonly ModelType[] = [
   ...kitTypes(militaryFreeKit),
   // AI-made models (D-060), written by tools/make-ai-kit.ps1.
   ...kitTypes(aiKit),
+  // Models placed from the owner's library in the editor (D-062), written by the dev server.
+  ...kitTypes(libraryKit),
 ];
 
 export function modelType(id: string): ModelType | undefined {

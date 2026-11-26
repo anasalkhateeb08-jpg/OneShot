@@ -4,7 +4,7 @@
 #   .\tools\run.ps1 "powershell -NoProfile -ExecutionPolicy Bypass -File tools\make-ai-kit.ps1"
 # Each new file is rebuilt by tools\blender\make_ai_model.py (clean skin, 3 detail levels, baked
 # color and detail, automatic check). Good ones join the editor's model list (N key) as
-# "ai_<file name>"; failed ones are listed. A preview of each is saved in
+# "ai_<file name>" and are copied to library\ai with a picture; failed ones are listed. A preview of each is saved in
 # Desktop\OneShot-previews. Files already made are skipped (use -Redo to make them again).
 # Rename a file in the inbox (e.g. desert_rock_big.glb) to give the model a readable name.
 # This file is ASCII only on purpose (Windows PowerShell 5.1 reads non-BOM files as ANSI).
@@ -12,7 +12,8 @@
 param(
   [string]$Tris = '3000,800,200',
   [int]$TexturePx = 1024,
-  [switch]$Redo
+  [switch]$Redo,
+  [switch]$Textured
 )
 
 $ErrorActionPreference = 'Stop'
@@ -46,6 +47,8 @@ New-Item -ItemType Directory -Force -Path $outDir, $lodDir, $previewDir | Out-Nu
 $files = @(Get-ChildItem $inbox -Filter '*.glb')
 if ($files.Count -eq 0) { throw "The inbox is empty: put .glb files in $inbox" }
 
+# Flat colors by default (D-061); -Textured keeps the baked picture texture instead.
+if ($Textured) { $env:ONESHOT_FLAT = '0' } else { $env:ONESHOT_FLAT = '1' }
 $made = 0
 $skipped = 0
 $failed = @()
@@ -70,6 +73,11 @@ if ((Get-ChildItem $outDir -Filter '*.glb').Count -gt 0) {
   node tools/assets/import-glb-kit.mjs .assets-pro/ai-kit ai ai
   if ($LASTEXITCODE -ne 0) { throw "import into the game failed" }
 }
+# Good pieces also go to the model library (D-062) with a picture, for the editor (L key).
+$libAi = Join-Path $root 'library\ai'
+New-Item -ItemType Directory -Force -Path $libAi | Out-Null
+Copy-Item -Force (Join-Path $outDir '*.glb') $libAi -ErrorAction SilentlyContinue
+powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $root 'tools\make-thumbs.ps1') | Select-String 'rendered|pictures|ERROR'
 Write-Host "Summary: $made made, $skipped already done, $($failed.Count) failed $($failed -join ', ')"
 Write-Host "Previews: $previewDir"
 if ($failed.Count -gt 0) { exit 1 }

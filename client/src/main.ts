@@ -276,11 +276,15 @@ async function start(): Promise<void> {
       },
       render: (alpha, frameSeconds) => {
         if (editor?.active) {
+          // The editor can open before the game's first frame (reload after a save or a
+          // library placement): hide the HUD here, never rely on an earlier hud.update (D-063).
+          hud.setSuppressed(true);
           world.update(gfx.camera.position);
           gfx.render();
           if (hint) hint.hidden = true;
           return;
         }
+        hud.setSuppressed(false);
         const sway = currentSway();
         player.applyToCamera(gfx.camera, alpha, { yaw: sway.yaw, pitch: sway.pitch + recoil });
         if (Math.abs(gfx.camera.fov - scope.fovDeg) > 1e-4) {

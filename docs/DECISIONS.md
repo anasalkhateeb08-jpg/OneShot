@@ -536,3 +536,42 @@ Reference values re-verified against the independent fine-step solver. Revert = 
   one whole object, plain background, three-quarter view, no thin scattered bits. Limits: the
   remesh softens edges sharper than about 0.7% of the model size; TRELLIS models are about
   1 m, so each piece is sized with S in the editor.
+
+- **D-061 Flat-color look for AI models (owner approved).** The first AI rock looked dull next
+  to the kit pieces: its texture is painted with gradients and spots, the AI picture's own
+  shading darkened it twice (painted shadow plus the game's light), and the remesh softened
+  its edges. The kit pieces use one clean color per face. `make_ai_model.py` now (default,
+  `-Textured` to go back) gives every face one color read from the baked color under it,
+  evens out the painted-in shading (faces darker than the bright quarter are lifted toward
+  it, capped), adds 10% saturation, shades faces flat (sharp facets) and exports no texture:
+  the colors travel as vertex colors (glTF COLOR_0), so the file is much smaller and matches
+  the kit. The game's model loader keeps vertex colors when it merges parts.
+
+- **D-062 Visual model library in the editor (owner request; replaces the N key).** The owner
+  keeps ready models in `F:\OneShot\library\<group>\*.glb` (outside Git, like all assets).
+  `tools/make-thumbs.ps1` (Blender, `tools/blender/thumbs.py`) renders a 256 px picture next to
+  each model that has none, so the models can be seen in the editor and in Explorer. In the
+  editor, L opens a window with the pictures by group; a click puts that model under the
+  mouse: the dev server (`client/vite.config.ts`) copies it into the game's assets, measures
+  its real size from the file (`tools/assets/glb-measure.mjs`, shared with the kit importer),
+  adds it to `shared/src/kits/library.json` (grass and similar get no collision), and saves
+  the layout that already holds the new piece; the game reloads with the editor open at the
+  same view. N is removed; pieces placed before keep working. `make-ai-kit.ps1` copies its
+  good results to `library\ai` and renders their pictures. `tools/crop-sheets.ps1` cuts
+  picture sheets (several objects on a plain background, as Gemini makes them) from
+  `F:\OneShot\sheets` into one square picture per object in `F:\OneShot\pieces`, leaving
+  labels and specks out; tested here on the owner's 8-object Gemini sheet (8 pieces found).
+  Fix (patch 37): the dev server config imported the layout checker, which pulls in the kit
+  files, so adding a model to `library.json` made Vite restart the whole server mid-reload
+  and the game came back blank (connection refused). The config now loads the checker
+  through the running server (`ssrLoadModule`), so kit changes only reload the page.
+  Fix (patch 38): a library model may have at most 30 000 triangles. A raw TRELLIS model
+  (hundreds of thousands) placed as a solid piece froze the game, since every shot and
+  mouse move tests a solid model's triangles. The dev server now refuses a heavier model
+  with a clear message in the editor. `node tools/assets/library-check.mjs` lists every
+  library model with its triangle count and takes back heavy pieces already placed (map,
+  `library.json`, game assets). Tested here on made-up files (1 heavy, 1 light).
+  Fix (patch 39): a model picked right after a reload, before the mouse had moved over the
+  game, was put at the camera's own spot (x 0, z 205), so the camera sat inside it and the
+  screen went black. Found from the saved layout, not guessed. It now goes where the
+  screen's center looks; the piece already placed there is moved 8 m aside by the command.

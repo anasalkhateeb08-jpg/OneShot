@@ -1,6 +1,6 @@
 import * as THREE from "three/webgpu";
 import { TransformControls } from "three/addons/controls/TransformControls.js";
-import { MODEL_TYPES, ROCK_ABOVE_GROUND, modelType, propsFromLayout } from "@oneshot/shared";
+import { ROCK_ABOVE_GROUND, modelType, propsFromLayout } from "@oneshot/shared";
 import type { HeightFn, MapLayout } from "@oneshot/shared";
 import type { World } from "../world/MapLayout";
 import type { PropPick } from "../world/Props";
@@ -18,7 +18,7 @@ import type { PropPick } from "../world/Props";
  *   Left click: select | left drag on a prop: move it over the ground
  *   D + left drag on a prop: copy it and move the copy
  *   T + left drag on a crate or model: copy it flush against a face, like a brick (up = on top)
- *   N: new model under the cursor (N again: next model type, Shift+N: previous)
+ *   L: model library (pictures of the owner's models, D-062): click one to put it under the mouse
  *   W move arrows | E rotate (rocks on every axis, D-051) | S resize (Shift: whole shape)
  *   Delete: remove | Ctrl+Z: undo | Ctrl+S: save to the project (the game reloads) | Esc: deselect
  *
@@ -27,9 +27,33 @@ import type { PropPick } from "../world/Props";
 
 type Kind = PropPick["kind"];
 
+/** One model of the owner's library, as listed by the dev server (D-062). */
+interface LibraryItem {
+  folder: string;
+  name: string;
+  id: string;
+  thumb: boolean;
+}
+
 interface Selection {
   kind: Kind;
   index: number;
+}
+
+/** A crate or model as drawn: center, half size and full turn (T + drag snapping, D-065). */
+interface SnapBox {
+  center: THREE.Vector3;
+  half: { x: number; y: number; z: number };
+  turn: THREE.Quaternion;
+}
+
+/** What a click (or the hover outline) finds under the mouse. */
+interface PickHit {
+  sel: Selection;
+  mirror: boolean;
+  point: THREE.Vector3;
+  mesh: THREE.InstancedMesh;
+  instanceId: number;
 }
 
 interface SavedView {
@@ -55,6 +79,13 @@ const EDITOR_FOV_DEG = 70;
 const RELOAD_DELAY_MS = 600;
 /** Mouse travel before a T + drag decides which face the copy goes against (pixels). */
 const SNAP_START_PX = 8;
+/** Mouse travel before a click on a prop becomes a drag that moves it (pixels, D-066). */
+const DRAG_START_PX = 5;
+/** Outline of the prop under the mouse: red = a click selects it, gray = mirrored half (D-064). */
+const HOVER_COLOR = 0xff2a2a;
+const HOVER_MIRROR_COLOR = 0x9a9a9a;
+const Y_AXIS = new THREE.Vector3(0, 1, 0);
+const Z_AXIS = new THREE.Vector3(0, 0, 1);
 
 const round = (v: number, digits: number): number => {
   const k = 10 ** digits;
@@ -141,7 +172,17 @@ export class Editor {
   private yaw = 0;
   private pitch = 0;
   private readonly keys = new Set<string>();
-  private drag: { plane: THREE.Plane; offset: THREE.Vector3 } | null = null;
+  /**
+   * Prop drag over the ground. It starts only after the mouse travels DRAG_START_PX, so a
+   * click just selects (D-066).
+   */
+  private drag: {
+    plane: THREE.Plane;
+    offset: THREE.Vector3;
+    startX: number;
+    startY: number;
+    moving: boolean;
+  } | null = null;
   /** Camera move in progress: turning around a point, or sliding the view. */
   private nav: {
     kind: "orbit" | "pan";
@@ -164,9 +205,12 @@ export class Editor {
   } | null = null;
   /** Last mouse position over the game (where N puts a new model). */
   private lastPointer: MouseEvent | null = null;
-  /** Index of the model the last N press created (N again changes its type). */
-  private lastSpawn: number | null = null;
+  /** The model library window (L). */
+  private readonly libraryPanel: HTMLDivElement;
   private message = "";
+  /** Outline drawn around the prop under the mouse: what a click would pick (D-064). */
+  private readonly hoverBox: THREE.LineSegments;
+  private readonly hoverMaterial: THREE.LineBasicMaterial;
 
   constructor(private readonly o: EditorOptions) {
     this.layout = structuredClone(o.layout);
@@ -185,6 +229,20 @@ export class Editor {
     });
     this.controls.addEventListener("objectChange", () => this.fromProxy());
 
+    const unitBox = new THREE.BoxGeometry(1, 1, 1);
+    this.hoverMaterial = new THREE.LineBasicMaterial({
+      color: HOVER_COLOR,
+      depthTest: false,
+      transparent: true,
+    });
+    this.hoverBox = new THREE.LineSegments(new THREE.EdgesGeometry(unitBox), this.hoverMaterial);
+    unitBox.dispose();
+    this.hoverBox.matrixAutoUpdate = false;
+    this.hoverBox.renderOrder = 999;
+    this.hoverBox.frustumCulled = false;
+    this.hoverBox.visible = false;
+    o.scene.add(this.hoverBox);
+
     this.panel = document.createElement("div");
     this.panel.style.cssText =
       "position:fixed;left:16px;top:56px;z-index:20;max-width:560px;padding:10px 12px;" +
@@ -193,10 +251,17 @@ export class Editor {
     this.panel.textContent =
       "MAP EDITOR (F2 to leave)\n" +
       "Wheel: closer / farther | Ctrl + left drag: turn around | Alt + left drag: slide | F: frame\n" +
-      "Click select | drag move on the ground | D + drag copy | T + drag: brick copy | N new model\n" +
+      "Click select | drag move on the ground | D + drag copy | T + drag: brick copy | L model library\n" +
       "W arrows | E rotate | S resize (Shift: whole shape) | Delete remove | Ctrl+Z undo | Esc deselect\n" +
       "Ctrl+S save | F2 saves and goes back to the game\n" +
       "You build the north half; the south half is its mirror.";
+    this.libraryPanel = document.createElement("div");
+    this.libraryPanel.style.cssText =
+      "position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:30;" +
+      "width:min(900px,90vw);max-height:80vh;overflow:auto;padding:14px;display:none;" +
+      "background:rgba(20,16,12,0.95);color:#f3e9da;font:13px system-ui,sans-serif;" +
+      "border-radius:10px;box-shadow:0 10px 40px rgba(0,0,0,0.5)";
+    document.body.appendChild(this.libraryPanel);
     this.status = document.createElement("div");
     this.status.style.cssText = "margin-top:6px;color:#ffd27a;font-weight:600";
     this.panel.appendChild(this.status);
@@ -240,6 +305,8 @@ export class Editor {
     this.sinceRebuild += dt;
     if (this.dirty && this.sinceRebuild >= REBUILD_INTERVAL_S) {
       this.o.world.rebuildProps(propsFromLayout(this.layout, this.o.heightAt));
+      // The outlined mesh was just replaced: the next mouse move draws it again.
+      this.hoverBox.visible = false;
       this.dirty = false;
       this.sinceRebuild = 0;
     }
@@ -259,7 +326,9 @@ export class Editor {
     }
     this.active = true;
     this.controls.enabled = true;
-    this.helper.visible = true;
+    // The arrows show only with something selected; open(view) after a reload selects nothing
+    // and the arrows were drawn alone in the middle of the screen (D-063).
+    this.helper.visible = this.selection !== null;
     this.panel.style.display = "block";
     cam.fov = EDITOR_FOV_DEG;
     cam.updateProjectionMatrix();
@@ -280,6 +349,7 @@ export class Editor {
     this.nav = null;
     this.controls.enabled = false;
     this.helper.visible = false;
+    this.hoverBox.visible = false;
     this.panel.style.display = "none";
     this.o.onToggle(false);
     this.forgetView();
@@ -313,8 +383,8 @@ export class Editor {
       case "KeyF":
         this.frameSelected();
         break;
-      case "KeyN":
-        this.spawnModel(e.shiftKey ? -1 : 1);
+      case "KeyL":
+        this.toggleLibrary();
         break;
       case "KeyW":
         this.setMode("translate");
@@ -331,7 +401,8 @@ export class Editor {
         this.removeSelected();
         break;
       case "Escape":
-        this.select(null);
+        if (this.libraryPanel.style.display === "block") this.libraryPanel.style.display = "none";
+        else this.select(null);
         break;
       default:
         break;
@@ -393,15 +464,23 @@ export class Editor {
       this.message = "Copied.";
     }
     this.select(sel);
-    const ground = this.o.heightAt(hit.point.x, hit.point.z);
-    const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -ground);
+    // The drag plane goes through the clicked point itself (not the ground under it), so the
+    // first mouse move does not make the prop jump (D-066).
+    const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -hit.point.y);
     const pos = this.entryXZ(sel);
-    this.drag = { plane, offset: new THREE.Vector3(pos.x - hit.point.x, 0, pos.z - hit.point.z) };
+    this.drag = {
+      plane,
+      offset: new THREE.Vector3(pos.x - hit.point.x, 0, pos.z - hit.point.z),
+      startX: e.clientX,
+      startY: e.clientY,
+      moving: false,
+    };
   }
 
   private onPointerMove(e: PointerEvent): void {
     if (!this.active) return;
     if (e.target === this.o.canvas) this.lastPointer = e;
+    this.updateHover(e);
     if (this.nav) {
       const dx = e.clientX - this.nav.lastX;
       const dy = e.clientY - this.nav.lastY;
@@ -416,6 +495,11 @@ export class Editor {
       return;
     }
     if (!this.drag || !this.selection) return;
+    if (!this.drag.moving) {
+      const travel = Math.hypot(e.clientX - this.drag.startX, e.clientY - this.drag.startY);
+      if (travel < DRAG_START_PX) return;
+      this.drag.moving = true;
+    }
     this.setRay(e);
     const point = new THREE.Vector3();
     if (!this.raycaster.ray.intersectPlane(this.drag.plane, point)) return;
@@ -425,8 +509,8 @@ export class Editor {
   }
 
   /**
-   * T + drag: the copy sits flush against the face of the crate that best matches the mouse
-   * direction: on top when dragging up, beside it when dragging sideways (D-053).
+   * T + drag: the copy sits flush against the face of the crate or model that best matches the
+   * mouse direction: up, down, or any side (D-053). Exact at any turn or tilt (D-065).
    */
   private moveSnap(e: PointerEvent): void {
     const snap = this.snap;
@@ -441,29 +525,30 @@ export class Editor {
       snap.copy = this.duplicate({ kind, index: snap.source }).index;
       this.message = "Snapped copy.";
     }
-    const h = this.o.heightAt;
-    const src = { x: box.x, z: box.z, rotY: box.rotY, half: box.half };
-    const center = new THREE.Vector3(src.x, box.bottom + src.half.y, src.z);
-    const ax = new THREE.Vector3(Math.cos(src.rotY), 0, -Math.sin(src.rotY));
-    const az = new THREE.Vector3(Math.sin(src.rotY), 0, Math.cos(src.rotY));
+    // The prop's own axes, turned exactly as the game draws it (tilt and lean included), so
+    // the copy touches the chosen face with no gap and no overlap at any turn (D-065).
+    const ax = new THREE.Vector3(1, 0, 0).applyQuaternion(box.turn);
+    const ay = new THREE.Vector3(0, 1, 0).applyQuaternion(box.turn);
+    const az = new THREE.Vector3(0, 0, 1).applyQuaternion(box.turn);
     const faces = [
-      ax.clone().multiplyScalar(2 * src.half.x),
-      ax.clone().multiplyScalar(-2 * src.half.x),
-      az.clone().multiplyScalar(2 * src.half.z),
-      az.clone().multiplyScalar(-2 * src.half.z),
-      new THREE.Vector3(0, 2 * src.half.y, 0),
+      ax.clone().multiplyScalar(2 * box.half.x),
+      ax.clone().multiplyScalar(-2 * box.half.x),
+      az.clone().multiplyScalar(2 * box.half.z),
+      az.clone().multiplyScalar(-2 * box.half.z),
+      ay.clone().multiplyScalar(2 * box.half.y),
+      ay.clone().multiplyScalar(-2 * box.half.y),
     ];
     const rect = this.o.canvas.getBoundingClientRect();
     const toScreen = (v: THREE.Vector3): THREE.Vector2 => {
       const n = v.clone().project(this.o.camera);
       return new THREE.Vector2((n.x * rect.width) / 2, (-n.y * rect.height) / 2);
     };
-    const origin = toScreen(center);
+    const origin = toScreen(box.center);
     const mouse = new THREE.Vector2(dx, dy).normalize();
     let best = faces[0] ?? new THREE.Vector3();
     let bestScore = -Infinity;
     for (const f of faces) {
-      const dir = toScreen(center.clone().add(f)).sub(origin);
+      const dir = toScreen(box.center.clone().add(f)).sub(origin);
       if (dir.lengthSq() < 1e-6) continue;
       const score = dir.normalize().dot(mouse);
       if (score > bestScore) {
@@ -471,81 +556,161 @@ export class Editor {
         best = f;
       }
     }
-    const x = src.x + best.x;
-    const z = src.z + best.z;
-    // Same height in the world as the source (plus one box when stacking): straight rows.
-    const above = box.bottom + best.y - h(x, z);
+    // Same turn as the source; its center moved by exactly one box along the chosen axis.
+    const center = box.center.clone().add(best);
+    const above = center.y - box.half.y - this.o.heightAt(center.x, center.z);
     if (kind === "crate") {
       const from = this.layout.crates[snap.source];
       const copy = this.layout.crates[snap.copy];
       if (!from || !copy) return;
-      Object.assign(copy, structuredClone(from), { x, z, base: above });
+      Object.assign(copy, structuredClone(from), { x: center.x, z: center.z, base: above });
     } else {
       const from = this.layout.models[snap.source];
       const copy = this.layout.models[snap.copy];
       if (!from || !copy) return;
-      Object.assign(copy, structuredClone(from), { x, z, lift: above });
+      Object.assign(copy, structuredClone(from), { x: center.x, z: center.z, lift: above });
     }
     this.select({ kind, index: snap.copy });
     this.changed();
   }
 
-  /** Box of a crate or model in the world: center x, z, bottom height, half size, turn. */
-  private boxOf(
-    kind: "crate" | "model",
-    index: number,
-  ): {
-    x: number;
-    z: number;
-    bottom: number;
-    half: { x: number; y: number; z: number };
-    rotY: number;
-  } | null {
+  /**
+   * Box of a crate or model exactly as the game draws it: center, half size, and full turn
+   * (crate: turn then lean, like Props; model: Y then X then Z, D-051).
+   */
+  private boxOf(kind: "crate" | "model", index: number): SnapBox | null {
     const h = this.o.heightAt;
     if (kind === "crate") {
       const c = this.layout.crates[index];
-      return c
-        ? { x: c.x, z: c.z, bottom: h(c.x, c.z) + c.base, half: c.half, rotY: c.rotY }
-        : null;
+      if (!c) return null;
+      const turn = new THREE.Quaternion().setFromAxisAngle(Y_AXIS, c.rotY);
+      turn.multiply(new THREE.Quaternion().setFromAxisAngle(Z_AXIS, c.lean));
+      return {
+        center: new THREE.Vector3(c.x, h(c.x, c.z) + c.base + c.half.y, c.z),
+        half: c.half,
+        turn,
+      };
     }
     const m = this.layout.models[index];
-    return m
-      ? { x: m.x, z: m.z, bottom: h(m.x, m.z) + m.lift, half: modelHalf(m), rotY: m.rotY }
-      : null;
+    if (!m) return null;
+    const half = modelHalf(m);
+    const euler = new THREE.Euler(m.rotX ?? 0, m.rotY, m.rotZ ?? 0, "YXZ");
+    const turn = new THREE.Quaternion().setFromEuler(euler);
+    return {
+      center: new THREE.Vector3(m.x, h(m.x, m.z) + m.lift + half.y, m.z),
+      half,
+      turn,
+    };
   }
 
-  /** N: puts a new model under the cursor; pressing N again switches to the next type. */
-  private spawnModel(step: 1 | -1): void {
-    const types = MODEL_TYPES;
-    if (types.length === 0 || !this.lastPointer) return;
-    const sel = this.selection;
-    const current = sel?.kind === "model" ? this.layout.models[sel.index] : undefined;
-    let typeIndex = 0;
-    if (current && this.lastSpawn === sel?.index) {
-      const at = types.findIndex((t) => t.id === current.type);
-      typeIndex = (at + step + types.length) % types.length;
+  /** L: opens or closes the model library (D-062). */
+  private toggleLibrary(): void {
+    if (this.libraryPanel.style.display === "block") {
+      this.libraryPanel.style.display = "none";
+      return;
     }
-    const type = types[typeIndex];
-    if (!type) return;
+    this.libraryPanel.style.display = "block";
+    this.libraryPanel.textContent = "Loading the library...";
+    void this.fillLibrary();
+  }
+
+  private async fillLibrary(): Promise<void> {
+    const panel = this.libraryPanel;
+    try {
+      const res = await fetch("/__editor/library");
+      if (!res.ok) throw new Error(await res.text());
+      const items = (await res.json()) as LibraryItem[];
+      panel.textContent = "";
+      const head = document.createElement("div");
+      head.style.cssText = "font-weight:600;margin-bottom:8px";
+      head.textContent =
+        items.length > 0
+          ? "MODEL LIBRARY: click a model to put it under the mouse (L or Esc to close)"
+          : "The library is empty: put .glb files in folders inside F:\\OneShot\\library";
+      panel.appendChild(head);
+      let folder = "";
+      let grid: HTMLDivElement | null = null;
+      for (const item of items) {
+        if (item.folder !== folder || !grid) {
+          folder = item.folder;
+          const title = document.createElement("div");
+          title.style.cssText = "margin:10px 0 4px;color:#ffd27a;font-weight:600";
+          title.textContent = folder;
+          panel.appendChild(title);
+          grid = document.createElement("div");
+          grid.style.cssText =
+            "display:grid;grid-template-columns:repeat(auto-fill,minmax(112px,1fr));gap:8px";
+          panel.appendChild(grid);
+        }
+        const card = document.createElement("button");
+        card.type = "button";
+        card.style.cssText =
+          "background:#2b241c;border:1px solid #5a4a36;border-radius:6px;padding:4px;" +
+          "color:#f3e9da;font:12px system-ui;cursor:pointer;display:flex;flex-direction:column;" +
+          "align-items:center;gap:4px";
+        if (item.thumb) {
+          const img = document.createElement("img");
+          img.src = `/__editor/library/${encodeURIComponent(item.folder)}/${encodeURIComponent(item.name)}.png`;
+          img.style.cssText = "width:100px;height:100px;object-fit:contain";
+          card.appendChild(img);
+        } else {
+          const none = document.createElement("div");
+          none.style.cssText = "width:100px;height:100px;display:grid;place-items:center";
+          none.textContent = "no picture";
+          card.appendChild(none);
+        }
+        const label = document.createElement("span");
+        label.textContent = item.name.replace(/_/g, " ");
+        card.appendChild(label);
+        card.addEventListener("click", () => void this.placeFromLibrary(item));
+        grid.appendChild(card);
+      }
+    } catch (err) {
+      panel.textContent = `Library failed: ${err instanceof Error ? err.message : String(err)}`;
+    }
+  }
+
+  /**
+   * Puts a library model under the mouse: the dev server makes it a game model type and saves
+   * the layout with the new piece in one go, then the game reloads (editor open, same view).
+   */
+  private async placeFromLibrary(item: LibraryItem): Promise<void> {
+    this.libraryPanel.style.display = "none";
+    // Under the mouse; if the mouse has not been over the game yet (right after a reload),
+    // where the screen's center looks. Never at the camera itself: a piece placed there
+    // swallowed the view (black screen, D-062 fix).
+    const rect = this.o.canvas.getBoundingClientRect();
+    const center = { clientX: rect.left + rect.width / 2, clientY: rect.top + rect.height / 2 };
+    const at = this.pointUnder(this.lastPointer ?? (center as MouseEvent));
     this.pushUndo();
-    if (current && this.lastSpawn === sel?.index) {
-      current.type = type.id;
-    } else {
-      const point = this.pointUnder(this.lastPointer);
-      this.layout.models.push({
-        type: type.id,
-        x: point.x,
-        z: point.z,
-        lift: 0,
-        rotY: this.yaw,
-        scale: { x: 1, y: 1, z: 1 },
+    this.layout.models.push({
+      type: item.id,
+      x: at.x,
+      z: at.z,
+      lift: 0,
+      rotY: this.yaw,
+      scale: { x: 1, y: 1, z: 1 },
+    });
+    this.message = `Adding ${item.name}...`;
+    this.storeView();
+    try {
+      const res = await fetch("/__editor/library/place", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          folder: item.folder,
+          name: item.name,
+          layout: roundedLayout(this.layout),
+        }),
       });
-      this.select({ kind: "model", index: this.layout.models.length - 1 });
-      this.lastSpawn = this.layout.models.length - 1;
+      if (!res.ok) throw new Error(await res.text());
+      this.unsaved = false;
+      this.message = `${item.name} added. The game reloads...`;
+      window.setTimeout(() => window.location.reload(), RELOAD_DELAY_MS);
+    } catch (err) {
+      this.layout.models.pop();
+      this.message = `Adding failed: ${err instanceof Error ? err.message : String(err)}`;
     }
-    this.toProxy();
-    this.changed();
-    this.message = `${type.label} (${typeIndex + 1} of ${types.length}): N next, Shift+N back`;
   }
 
   private onWheel(e: WheelEvent): void {
@@ -659,12 +824,47 @@ export class Editor {
     this.raycaster.setFromCamera(ndc, this.o.camera);
   }
 
-  private pick(e: PointerEvent): { sel: Selection; mirror: boolean; point: THREE.Vector3 } | null {
+  /**
+   * Outlines the prop a click would pick right now, using the same pick() as the click, so
+   * the red box is always exactly what gets selected (D-064). Hidden while the mouse is off the
+   * game, over the arrows, or moving the camera or a prop.
+   */
+  private updateHover(e: PointerEvent): void {
+    const busy = this.nav !== null || this.drag !== null || this.snap !== null;
+    const onArrows =
+      this.controls.axis !== null && !this.keys.has("KeyD") && !this.keys.has("KeyT");
+    const hit = e.target === this.o.canvas && !busy && !onArrows ? this.pick(e) : null;
+    if (!hit) {
+      this.hoverBox.visible = false;
+      return;
+    }
+    const geometry = hit.mesh.geometry;
+    if (!geometry.boundingBox) geometry.computeBoundingBox();
+    const bounds = geometry.boundingBox;
+    if (!bounds) {
+      this.hoverBox.visible = false;
+      return;
+    }
+    const center = bounds.getCenter(new THREE.Vector3());
+    const size = bounds.getSize(new THREE.Vector3()).max(new THREE.Vector3(1e-3, 1e-3, 1e-3));
+    const instance = new THREE.Matrix4();
+    hit.mesh.getMatrixAt(hit.instanceId, instance);
+    const local = new THREE.Matrix4().compose(center, new THREE.Quaternion(), size);
+    hit.mesh.updateMatrixWorld();
+    this.hoverBox.matrix.copy(hit.mesh.matrixWorld).multiply(instance).multiply(local);
+    this.hoverBox.matrixWorldNeedsUpdate = true;
+    this.hoverMaterial.color.setHex(hit.mirror ? HOVER_MIRROR_COLOR : HOVER_COLOR);
+    this.hoverBox.visible = true;
+  }
+
+  private pick(e: MouseEvent): PickHit | null {
     this.setRay(e);
     const hits = this.raycaster.intersectObjects(this.o.world.propsGroup.children, false);
     for (const h of hits) {
       const pick = h.object.userData.pick as PropPick | undefined;
-      if (!pick || h.instanceId === undefined) continue;
+      if (!pick || h.instanceId === undefined || !(h.object instanceof THREE.InstancedMesh)) {
+        continue;
+      }
       const index = pick.indices[h.instanceId];
       if (index === undefined) continue;
       const half = this.list(pick.kind).length;
@@ -672,6 +872,8 @@ export class Editor {
         sel: { kind: pick.kind, index: index % half },
         mirror: index >= half,
         point: h.point,
+        mesh: h.object,
+        instanceId: h.instanceId,
       };
     }
     return null;
@@ -712,8 +914,8 @@ export class Editor {
   }
 
   private select(sel: Selection | null): void {
-    if (!sel || sel.kind !== "model" || sel.index !== this.lastSpawn) this.lastSpawn = null;
     this.selection = sel;
+    this.helper.visible = this.active && sel !== null;
     this.updateAxes();
     if (sel) {
       this.toProxy();

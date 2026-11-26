@@ -71,7 +71,7 @@ export interface GameAssets {
   models: Map<string, ModelAsset>;
 }
 
-const MODEL_ATTRIBUTES = ["position", "normal", "uv"];
+const MODEL_ATTRIBUTES = ["position", "normal", "uv", "color"];
 
 /**
  * Loads one placed model and scales it to the unit box (every axis -1..1). Kit models are made
@@ -98,12 +98,34 @@ async function loadModel(loader: GLTFLoader, url: string): Promise<ModelAsset | 
       const count = g.getAttribute("position").count;
       g.setAttribute("uv", new THREE.BufferAttribute(new Float32Array(count * 2), 2));
     }
+    // Flat-colored models (D-061) carry one color per face; keep every part's colors in step.
+    const color = g.getAttribute("color");
+    if (color && color.itemSize !== 4) {
+      const count = color.count;
+      const rgba = new Float32Array(count * 4);
+      for (let i = 0; i < count; i++) {
+        rgba[i * 4] = color.getX(i);
+        rgba[i * 4 + 1] = color.getY(i);
+        rgba[i * 4 + 2] = color.getZ(i);
+        rgba[i * 4 + 3] = 1;
+      }
+      g.setAttribute("color", new THREE.BufferAttribute(rgba, 4));
+    }
     g.clearGroups();
     const list = byMaterial.get(material) ?? [];
     list.push(g);
     byMaterial.set(material, list);
   });
   if (byMaterial.size === 0) return null;
+  // mergeGeometries needs the same attributes on every part: give white to parts without color.
+  const parts = [...byMaterial.values()].flat();
+  if (parts.some((p) => p.getAttribute("color")) && parts.some((p) => !p.getAttribute("color"))) {
+    for (const p of parts) {
+      if (p.getAttribute("color")) continue;
+      const count = p.getAttribute("position").count;
+      p.setAttribute("color", new THREE.BufferAttribute(new Float32Array(count * 4).fill(1), 4));
+    }
+  }
   const materials = [...byMaterial.keys()];
   const pieces = [...byMaterial.values()].map((list) =>
     list.length === 1 ? list[0] : mergeGeometries(list, false),

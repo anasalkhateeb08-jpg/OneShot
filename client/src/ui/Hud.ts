@@ -80,6 +80,8 @@ export class Hud {
   private lastZoomLevel = -1;
   private lastViewBox = "";
   private lastInfo = "";
+  /** True while the map editor is open: the whole HUD is hidden (D-063). */
+  private suppressed = false;
 
   /** @param zoomLevels the scope's magnification levels, lowest first */
   constructor(root: HTMLElement, zoomLevels: readonly number[]) {
@@ -131,6 +133,27 @@ export class Hud {
     this.ammo = div("hud-ammo", root);
     this.flashEl = div("hud-flash", root);
     this.flashEl.hidden = true;
+  }
+
+  /**
+   * Hides the whole HUD while the map editor is open, or shows it again (D-063).
+   * Uses inline display, so it never fights the `hidden` flags that update() sets.
+   */
+  setSuppressed(on: boolean): void {
+    if (on === this.suppressed) return;
+    this.suppressed = on;
+    const display = on ? "none" : "";
+    for (const el of [
+      this.vignette,
+      this.dot,
+      this.scope,
+      this.range,
+      this.info,
+      this.ammo,
+      this.flashEl,
+    ]) {
+      el.style.display = display;
+    }
   }
 
   update(s: HudState): void {
