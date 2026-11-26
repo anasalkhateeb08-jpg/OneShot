@@ -22,3 +22,4 @@
 - 2026-11-26 19:13 | Phase 1: Core feel (step 1f) | Model library D-062 and patches 35-39 applied; open bug: scope overlay shows after placing a library model | Decision: D-059 to D-062: AI models, flat colors, model library, crop tool
 - 2026-11-26 20:24 | Phase 1: Core feel (step 1f) | Editor fixes done: no scope after reload, hover outline, exact T copy, click selects only, ray tests fixed. All checks green. | Decision: D-063 to D-067
 - 2026-11-26 21:30 | Phase 1: Core feel (step 1f) | Automatic library pictures (watcher at logon). Tested: pictures appear. | Decision: D-068
+- 2026-11-26 21:55 | Phase 1: Core feel (step 1f) | Library pictures watcher now sleeps until a new model arrives. | Decision: D-068 updated

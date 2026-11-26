@@ -602,8 +602,9 @@ Reference values re-verified against the independent fine-step solver. Revert = 
   pass on the owner's PC.
 - **D-068 Library pictures are made automatically (owner request).** `tools/watch-thumbs.ps1`
   runs hidden in the background, started at every logon by a shortcut in the user's Startup
-  folder (`tools/install-thumbs-watch.ps1`, no administrator rights). Every 10 s it looks for
-  a `.glb` in `F:\OneShot\library` with no picture (or an older one); once the file has not
-  changed for 5 s it runs `make-thumbs.ps1` (Blender). A model that fails is not retried until
+  folder (`tools/install-thumbs-watch.ps1`, no administrator rights). It sleeps until Windows
+  reports a `.glb` created, changed or renamed in `F:\OneShot\library` (FileSystemWatcher, no
+  polling, no CPU while waiting; owner request), waits until nothing changes for 5 s, then
+  runs `make-thumbs.ps1` (Blender) for every model with no picture (or an older one). A model that fails is not retried until
   its file changes. Log: `%TEMP%\oneshot-thumbs.log`. Checked on the owner's PC: the three
-  `sample_*` models got their pictures. To stop it: delete "OneShot Thumbs" from shell:startup.
+  `sample_*` models got their pictures. To stop it: `tools\install-thumbs-watch.ps1 -Remove`.

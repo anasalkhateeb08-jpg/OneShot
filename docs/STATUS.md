@@ -1,6 +1,6 @@
 # STATUS
 
-Last updated: 2026-11-26 21:30
+Last updated: 2026-11-26 21:55
 
 ## Phase
 
@@ -8,11 +8,11 @@ Phase 1: Core feel (step 1f)
 
 ## Status
 
-Automatic library pictures (watcher at logon). Tested: pictures appear.
+Library pictures watcher now sleeps until a new model arrives.
 
 ## Decision
 
-D-068
+D-068 updated
 
 ## Next step
 
