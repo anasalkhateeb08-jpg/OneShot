@@ -21,3 +21,4 @@
 - 2026-11-23 20:59 | Phase 1: Core feel (step 1f) | Done and checked: rocks solid for walking, creeping while scoped, wooden crates (bullets pass through, see-through holes, 5 rotating impact effects), exact rock-mesh collision for shots. 125 shared, 19 client, 5 server tests green. | Decision: D-031 to D-038 recorded. Patch-only delivery rule added.
 - 2026-11-26 19:13 | Phase 1: Core feel (step 1f) | Model library D-062 and patches 35-39 applied; open bug: scope overlay shows after placing a library model | Decision: D-059 to D-062: AI models, flat colors, model library, crop tool
 - 2026-11-26 20:24 | Phase 1: Core feel (step 1f) | Editor fixes done: no scope after reload, hover outline, exact T copy, click selects only, ray tests fixed. All checks green. | Decision: D-063 to D-067
+- 2026-11-26 21:30 | Phase 1: Core feel (step 1f) | Automatic library pictures (watcher at logon). Tested: pictures appear. | Decision: D-068

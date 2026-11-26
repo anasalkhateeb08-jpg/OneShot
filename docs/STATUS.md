@@ -1,6 +1,6 @@
 # STATUS
 
-Last updated: 2026-11-26 20:24
+Last updated: 2026-11-26 21:30
 
 ## Phase
 
@@ -8,12 +8,12 @@ Phase 1: Core feel (step 1f)
 
 ## Status
 
-Editor fixes done: no scope after reload, hover outline, exact T copy, click selects only, ray tests fixed. All checks green.
+Automatic library pictures (watcher at logon). Tested: pictures appear.
 
 ## Decision
 
-D-063 to D-067
+D-068
 
 ## Next step
 
-Owner chooses the next step
+Owner makes AI models

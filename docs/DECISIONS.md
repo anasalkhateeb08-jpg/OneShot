@@ -600,3 +600,10 @@ Reference values re-verified against the independent fine-step solver. Revert = 
   expected the spawn cover rock 7 to 11 m ahead; the owner moved it in the editor, so the
   tests (and GitHub CI) failed. They now place their own test rock 9 m ahead. All 164 tests
   pass on the owner's PC.
+- **D-068 Library pictures are made automatically (owner request).** `tools/watch-thumbs.ps1`
+  runs hidden in the background, started at every logon by a shortcut in the user's Startup
+  folder (`tools/install-thumbs-watch.ps1`, no administrator rights). Every 10 s it looks for
+  a `.glb` in `F:\OneShot\library` with no picture (or an older one); once the file has not
+  changed for 5 s it runs `make-thumbs.ps1` (Blender). A model that fails is not retried until
+  its file changes. Log: `%TEMP%\oneshot-thumbs.log`. Checked on the owner's PC: the three
+  `sample_*` models got their pictures. To stop it: delete "OneShot Thumbs" from shell:startup.
