@@ -9,6 +9,8 @@ import { segmentOrientedBox, segmentSphere, toRotatedLocal } from "./geometry";
 import type { Vec3 } from "./messages";
 import { segmentUnitMesh } from "./rockMesh";
 import type { RockMesh } from "./rockMesh";
+import aiKit from "./kits/ai.json";
+import militaryFreeKit from "./kits/military-free.json";
 
 /** solid: stops bullets and players (sandbags). none: decoration only (wires, debris). */
 export type ModelCollision = "solid" | "none";
@@ -22,14 +24,34 @@ export interface ModelType {
   collision: ModelCollision;
 }
 
-/** Every model type the game knows. The id is the folder name in .assets-pro. */
+/** Checks a kit file written by tools/assets/import-glb-kit.mjs (D-057). */
+function kitTypes(data: unknown): ModelType[] {
+  if (!Array.isArray(data)) return [];
+  return data.filter((t: unknown): t is ModelType => {
+    if (typeof t !== "object" || t === null) return false;
+    const m = t as Record<string, unknown>;
+    const size = m.size as Record<string, unknown> | undefined;
+    return (
+      typeof m.id === "string" &&
+      typeof m.label === "string" &&
+      (m.collision === "solid" || m.collision === "none") &&
+      !!size &&
+      typeof size.x === "number" &&
+      typeof size.y === "number" &&
+      typeof size.z === "number"
+    );
+  });
+}
+
+/**
+ * Every model type the game knows: the stylized kit (D-055, D-057). The photoscanned sandbag
+ * barrier of D-054 was retired with the photoreal look; an old layout that still names it
+ * simply draws nothing for it.
+ */
 export const MODEL_TYPES: readonly ModelType[] = [
-  {
-    id: "sandbag_barrier",
-    label: "Sandbag barrier",
-    size: { x: 2.37, y: 0.53, z: 0.38 },
-    collision: "solid",
-  },
+  ...kitTypes(militaryFreeKit),
+  // AI-made models (D-060), written by tools/make-ai-kit.ps1.
+  ...kitTypes(aiKit),
 ];
 
 export function modelType(id: string): ModelType | undefined {

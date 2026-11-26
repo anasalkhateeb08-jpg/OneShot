@@ -1,6 +1,7 @@
 import * as THREE from "three/webgpu";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
-import { createRockMesh } from "@oneshot/shared";
+import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
+import { createRockMesh, modelType } from "@oneshot/shared";
 import type { RockMesh } from "@oneshot/shared";
 
 /** Written by `npm run assets` (tools/assets/fetch-assets.mjs). */
@@ -17,7 +18,8 @@ interface Manifest {
 /** A placed model's shape, scaled so its box spans -1..1 on every axis (D-054). */
 export interface ModelAsset {
   geometry: THREE.BufferGeometry;
-  material: THREE.Material;
+  /** One material, or one per merged piece (geometry groups). */
+  material: THREE.Material | THREE.Material[];
   /** The same triangles, for exact bullet collision. */
   mesh: RockMesh;
 }
@@ -69,34 +71,59 @@ export interface GameAssets {
   models: Map<string, ModelAsset>;
 }
 
-/** Loads one placed model and scales it to the unit box (every axis -1..1). */
+const MODEL_ATTRIBUTES = ["position", "normal", "uv"];
+
+/**
+ * Loads one placed model and scales it to the unit box (every axis -1..1). Kit models are made
+ * of several parts (a tank: hull, turret, tracks); all parts are merged into one shape, one
+ * piece per material, so a copy is still a single draw (D-057).
+ */
 async function loadModel(loader: GLTFLoader, url: string): Promise<ModelAsset | null> {
   const gltf = await loader.loadAsync(url);
   gltf.scene.updateMatrixWorld(true);
-  let found: ModelAsset | null = null;
+  const byMaterial = new Map<THREE.Material, THREE.BufferGeometry[]>();
   gltf.scene.traverse((obj) => {
-    if (found) return;
     const mesh = obj as THREE.Mesh;
     if (!mesh.isMesh) return;
-    const geometry = mesh.geometry.clone();
-    geometry.applyMatrix4(mesh.matrixWorld);
-    geometry.computeBoundingBox();
-    const box = geometry.boundingBox;
-    if (!box) return;
-    const center = box.getCenter(new THREE.Vector3());
-    const half = box.getSize(new THREE.Vector3()).multiplyScalar(0.5);
-    geometry.translate(-center.x, -center.y, -center.z);
-    geometry.scale(
-      1 / Math.max(half.x, 1e-6),
-      1 / Math.max(half.y, 1e-6),
-      1 / Math.max(half.z, 1e-6),
-    );
-    keepNormals(geometry);
     const material = Array.isArray(mesh.material) ? mesh.material[0] : mesh.material;
     if (!material) return;
-    found = { geometry, material, mesh: createRockMesh(triangleList(geometry)) };
+    let g = mesh.geometry.clone();
+    g.applyMatrix4(mesh.matrixWorld);
+    if (g.index) g = g.toNonIndexed();
+    for (const name of Object.keys(g.attributes)) {
+      if (!MODEL_ATTRIBUTES.includes(name)) g.deleteAttribute(name);
+    }
+    if (!g.getAttribute("normal")) g.computeVertexNormals();
+    if (!g.getAttribute("uv")) {
+      const count = g.getAttribute("position").count;
+      g.setAttribute("uv", new THREE.BufferAttribute(new Float32Array(count * 2), 2));
+    }
+    g.clearGroups();
+    const list = byMaterial.get(material) ?? [];
+    list.push(g);
+    byMaterial.set(material, list);
   });
-  return found as ModelAsset | null;
+  if (byMaterial.size === 0) return null;
+  const materials = [...byMaterial.keys()];
+  const pieces = [...byMaterial.values()].map((list) =>
+    list.length === 1 ? list[0] : mergeGeometries(list, false),
+  );
+  if (pieces.some((p) => !p)) return null;
+  const merged =
+    pieces.length === 1 ? pieces[0] : mergeGeometries(pieces as THREE.BufferGeometry[], true);
+  if (!merged) return null;
+  merged.computeBoundingBox();
+  const box = merged.boundingBox;
+  if (!box) return null;
+  const center = box.getCenter(new THREE.Vector3());
+  const half = box.getSize(new THREE.Vector3()).multiplyScalar(0.5);
+  merged.translate(-center.x, -center.y, -center.z);
+  merged.scale(1 / Math.max(half.x, 1e-6), 1 / Math.max(half.y, 1e-6), 1 / Math.max(half.z, 1e-6));
+  return {
+    geometry: merged,
+    material: materials.length === 1 ? (materials[0] as THREE.Material) : materials,
+    mesh: createRockMesh(triangleList(merged)),
+  };
 }
 
 const MANIFEST_URL = "/assets/manifest.json";
@@ -199,6 +226,12 @@ async function loadRock(
  * Loads the real-world assets listed in the manifest. If the manifest is missing (assets not
  * downloaded yet) or a file fails, the game falls back to its procedural look and still runs.
  */
+/**
+ * Stylized look (D-055, D-058): the photoscanned ground textures and rocks are not loaded; the
+ * ground is painted by the terrain colors and rocks are the faceted low-poly shapes.
+ */
+const STYLIZED_LOOK = true;
+
 export async function loadAssets(): Promise<GameAssets> {
   const empty: GameAssets = { ground: null, rocks: [], models: new Map() };
   let manifest: Manifest;
@@ -211,20 +244,22 @@ export async function loadAssets(): Promise<GameAssets> {
   }
 
   let ground: GroundMaps | null = null;
-  try {
-    const [map, normalMap, roughnessMap] = await Promise.all([
-      loadTexture(manifest.ground.diff, true),
-      loadTexture(manifest.ground.nor, false),
-      loadTexture(manifest.ground.rough, false),
-    ]);
-    ground = { map, normalMap, roughnessMap };
-  } catch (err) {
-    console.warn("Ground textures failed to load; using the procedural ground.", err);
+  if (!STYLIZED_LOOK) {
+    try {
+      const [map, normalMap, roughnessMap] = await Promise.all([
+        loadTexture(manifest.ground.diff, true),
+        loadTexture(manifest.ground.nor, false),
+        loadTexture(manifest.ground.rough, false),
+      ]);
+      ground = { map, normalMap, roughnessMap };
+    } catch (err) {
+      console.warn("Ground textures failed to load; using the procedural ground.", err);
+    }
   }
 
   const loader = new GLTFLoader();
   const rocks: RockAsset[] = [];
-  for (const [i, url] of manifest.rocks.entries()) {
+  for (const [i, url] of STYLIZED_LOOK ? [] : manifest.rocks.entries()) {
     try {
       const rock = await loadRock(loader, url, {
         mid: manifest.rocksMid?.[i],
@@ -237,6 +272,7 @@ export async function loadAssets(): Promise<GameAssets> {
   }
   const models = new Map<string, ModelAsset>();
   for (const [id, files] of Object.entries(manifest.models ?? {})) {
+    if (!modelType(id)) continue; // a retired model type (e.g. the photoreal sandbags)
     try {
       const model = await loadModel(loader, files.near);
       if (model) models.set(id, model);

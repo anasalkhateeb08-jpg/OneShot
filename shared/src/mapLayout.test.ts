@@ -2,9 +2,14 @@ import { describe, expect, it } from "vitest";
 import { DESERT_CANYON } from "./mapDesert";
 import { parseLayout, propsFromLayout } from "./mapLayout";
 import type { MapLayout } from "./mapLayout";
+import type { ModelType } from "./models";
 import layoutFile from "./layouts/desert-canyon.json";
 
 const flat = (): number => 10;
+const testTypes = (id: string): ModelType | undefined =>
+  id === "sandbag_barrier"
+    ? { id, label: "Sandbags", size: { x: 2.37, y: 0.53, z: 0.38 }, collision: "solid" }
+    : undefined;
 
 const sample: MapLayout = {
   version: 1,
@@ -27,7 +32,7 @@ const sample: MapLayout = {
 
 describe("map layout (D-049)", () => {
   it("adds the mirrored half after the authored half, in the same order", () => {
-    const p = propsFromLayout(sample, flat);
+    const p = propsFromLayout(sample, flat, testTypes);
     expect(p.rocks).toHaveLength(2);
     expect(p.crates).toHaveLength(2);
     expect(p.shrubs).toHaveLength(2);
@@ -47,7 +52,7 @@ describe("map layout (D-049)", () => {
   });
 
   it("places models on the ground at their real size, mirrored (D-054)", () => {
-    const p = propsFromLayout(sample, flat);
+    const p = propsFromLayout(sample, flat, testTypes);
     expect(p.models).toHaveLength(2);
     const [a, b] = p.models;
     expect(a?.half.x).toBeCloseTo(2.37); // 2.37 m long, scale 2, half of it

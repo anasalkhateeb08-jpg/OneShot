@@ -6,3 +6,4 @@ docs
 *.md
 tools
 shared/src/layouts
+shared/src/kits

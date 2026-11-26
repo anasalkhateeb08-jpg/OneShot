@@ -472,3 +472,67 @@ Reference values re-verified against the independent fine-step solver. Revert = 
   game (kept in the repo as tools): the Megascans rocks and the Blender photoscan pipeline.
   Not mixed: no photoreal asset stays once the stylized kit replaces it. Next: compare 2 to 3
   free kits (license, glTF, desert and military pieces) with pictures, owner picks one.
+
+- **D-056 Neutral settings (owner rule).** Maps show no religious buildings or symbols, no
+  national flags, no real-language writing and nothing tied to one people, faith or culture
+  (VISION.md). The "mud village" idea from the reference picture is dropped for generic
+  military structures. Every kit piece is checked against this rule before it is imported.
+- **D-057 First stylized kit: ithappy "Military FREE" (owner downloaded the glb version).**
+  30+ low-poly military pieces (barrels, barriers, boxes, cacti, grass, generator, hedgehog
+  obstacles, vehicles, tents, tower, targets), commercial use allowed, glTF ready, no Blender
+  step. `tools/assets/import-glb-kit.mjs <folder> <kit> <prefix>` measures each model's real
+  size from the file (every mesh and node transform; checked on a test file), copies it into
+  the game, lists it in the manifest and writes `shared/src/kits/<kit>.json`; `MODEL_TYPES`
+  is now that kit. Grass gets no collision, the rest is solid (exact triangles for bullets).
+  The loader merges a model's parts into one shape per material, so every copy stays one
+  draw. Editor: N cycles forward through the kit, Shift+N back. The photoscanned sandbag
+  barrier (D-054) is retired and no longer loaded. Checked against D-056: the piece names and
+  the store pictures show nothing religious or national; the owner confirms in the game.
+  Known cost: each file embeds the kit's color texture (about 250 KB each); sharing one
+  texture is an optimization for later. If the full kit (415 pieces) is bought, it imports
+  the same way.
+
+- **D-058 Stylized desert canyon look, step 1 (owner references: three low-poly desert
+  canyon pictures).** Common traits: clear blue sky, smooth peach sand without grain,
+  terracotta rocks with big flat facets, warm bright sun, soft shade, few saturated accents,
+  figures that read clearly against the ground. Done in code, no downloads: new palette in
+  the desert atmosphere (sky, fog only far away, sand, terracotta), the ground's gritty
+  speckle reduced to a faint variation, the photoscanned ground textures and rocks no longer
+  loaded (`STYLIZED_LOOK` in Assets.ts), rocks drawn as faceted low-poly shapes in three
+  terracotta shades, and Neutral tone mapping instead of ACES so the painted colors stay as
+  they are. Limits: the faceted rocks use their ellipsoid for bullet collision (within about
+  16% of the drawn shape) until exact low-poly rock meshes are shared with the simulation;
+  the old crates and shrubs are still the code-drawn ones (next: kit pieces). The mud houses
+  in one reference stay out (D-056).
+
+- **D-059 AI-made models for the stylized kit (owner idea).** Instead of buying packs or
+  hand-scripting shapes, the owner makes a reference picture with an image AI (Gemini, our own
+  picture, no third-party art) and turns it into a 3D model with Microsoft TRELLIS.2 on
+  Hugging Face (MIT license, commercial use allowed, free account quota of a few models a
+  day). The result (hundreds of thousands of triangles) goes through our Blender tool:
+  `tools/make-ai-model.ps1 -Name <id>` takes the newest .glb in Downloads and makes the three
+  detail levels with a baked normal map and a preview. `make_rock.py` now adds the baked
+  normal map to materials that had none (AI models come without one). First test: a faceted
+  terracotta desert rock. Quality ceiling: very good for simple props (rocks, cacti, barrels),
+  weaker for complex ones; every piece is approved on its preview before it enters the game.
+- **D-059 fix: AI models tore into shards when reduced.** The TRELLIS model is split into loose
+  triangles along its texture seams, so the decimation reduced each piece on its own. The
+  Blender tool now welds vertices that share a spot before reducing (safe for every source),
+  and for AI models (`ONESHOT_PLANAR=1`, set by make-ai-model.ps1) first merges each flat facet
+  into one face, which suits the faceted low-poly look, then reduces to the target.
+
+- **D-060 Root fix and batch tool for AI models (owner: "no stopping at every piece").** AI
+  models are not reduced as they are any more (that tore them, D-059). `make_ai_model.py`
+  rebuilds them the way AI-asset services do: weld, voxel remesh into a new closed skin (the
+  broken inside no longer matters, thin loose bits disappear), reduce to 3000 / 800 / 200
+  triangles, fresh UVs, bake the original's color and surface detail onto the new skin (no
+  stretched texture), then an automatic check samples 3000 points on each surface and
+  measures the distance to the other one in both directions; above 3.5% of the model size
+  the piece is reported FAILED and not exported (this catches torn or shrunken results
+  before the owner sees them). `tools/make-ai-kit.ps1` works in batches: every .glb in
+  `inbox/` (TRELLIS downloads `sample*.glb` are moved there by themselves; renaming a file
+  names the model) is made once, previews go to Desktop\OneShot-previews, and all good pieces
+  join the editor's model list (N) as kit `ai` (`shared/src/kits/ai.json`). Input pictures:
+  one whole object, plain background, three-quarter view, no thin scattered bits. Limits: the
+  remesh softens edges sharper than about 0.7% of the model size; TRELLIS models are about
+  1 m, so each piece is sized with S in the editor.

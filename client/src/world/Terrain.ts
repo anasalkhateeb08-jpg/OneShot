@@ -26,7 +26,8 @@ function groundColor(
   out.copy(low).lerp(high, n);
   const slope = 1 - normalY;
   out.lerp(rock, smoothstep(0.18, 0.45, slope));
-  const speckle = 0.94 + 0.12 * (0.5 + 0.5 * fbm2(x * 0.4, z * 0.4, 773, 2));
+  // Stylized ground (D-058): only a faint fine variation, no gritty speckle.
+  const speckle = 0.985 + 0.03 * (0.5 + 0.5 * fbm2(x * 0.4, z * 0.4, 773, 2));
   out.multiplyScalar(speckle);
 }
 

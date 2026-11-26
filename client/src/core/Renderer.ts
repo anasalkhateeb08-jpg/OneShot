@@ -30,7 +30,8 @@ export class GameRenderer {
     const renderer = new THREE.WebGPURenderer({ antialias: true, forceWebGL: options.forceWebGL });
     await renderer.init();
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, MAX_PIXEL_RATIO));
-    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    // Neutral keeps the stylized colors as painted (ACES shifts and desaturates them, D-058).
+    renderer.toneMapping = THREE.NeutralToneMapping;
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;

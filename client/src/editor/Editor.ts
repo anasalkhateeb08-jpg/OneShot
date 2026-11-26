@@ -18,7 +18,7 @@ import type { PropPick } from "../world/Props";
  *   Left click: select | left drag on a prop: move it over the ground
  *   D + left drag on a prop: copy it and move the copy
  *   T + left drag on a crate or model: copy it flush against a face, like a brick (up = on top)
- *   N: new model under the cursor (N again: next model type)
+ *   N: new model under the cursor (N again: next model type, Shift+N: previous)
  *   W move arrows | E rotate (rocks on every axis, D-051) | S resize (Shift: whole shape)
  *   Delete: remove | Ctrl+Z: undo | Ctrl+S: save to the project (the game reloads) | Esc: deselect
  *
@@ -314,7 +314,7 @@ export class Editor {
         this.frameSelected();
         break;
       case "KeyN":
-        this.spawnModel();
+        this.spawnModel(e.shiftKey ? -1 : 1);
         break;
       case "KeyW":
         this.setMode("translate");
@@ -515,14 +515,15 @@ export class Editor {
   }
 
   /** N: puts a new model under the cursor; pressing N again switches to the next type. */
-  private spawnModel(): void {
+  private spawnModel(step: 1 | -1): void {
     const types = MODEL_TYPES;
     if (types.length === 0 || !this.lastPointer) return;
     const sel = this.selection;
     const current = sel?.kind === "model" ? this.layout.models[sel.index] : undefined;
     let typeIndex = 0;
     if (current && this.lastSpawn === sel?.index) {
-      typeIndex = (types.findIndex((t) => t.id === current.type) + 1) % types.length;
+      const at = types.findIndex((t) => t.id === current.type);
+      typeIndex = (at + step + types.length) % types.length;
     }
     const type = types[typeIndex];
     if (!type) return;
@@ -544,7 +545,7 @@ export class Editor {
     }
     this.toProxy();
     this.changed();
-    this.message = `New: ${type.label} (N again: next type)`;
+    this.message = `${type.label} (${typeIndex + 1} of ${types.length}): N next, Shift+N back`;
   }
 
   private onWheel(e: WheelEvent): void {

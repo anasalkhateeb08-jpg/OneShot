@@ -22,7 +22,8 @@ const MID_ROCK_M = 200;
  * noise (at most 12%), faceted. Already a unit shape, like the normalized photoscanned rocks.
  */
 function proceduralRockGeometry(variant: number): THREE.BufferGeometry {
-  const geometry = new THREE.IcosahedronGeometry(1, 2);
+  // Detail 1: big flat facets, the low-poly rock look of the stylized references (D-058).
+  const geometry = new THREE.IcosahedronGeometry(1, 1);
   const pos = geometry.getAttribute("position");
   const seed = 1000 + variant * 77;
   for (let i = 0; i < pos.count; i++) {
@@ -30,7 +31,7 @@ function proceduralRockGeometry(variant: number): THREE.BufferGeometry {
     const y = pos.getY(i);
     const z = pos.getZ(i);
     const n = fbm2(x * 1.7 + y * 0.9, z * 1.7 - y * 0.6, seed, 3);
-    const s = 1 + 0.12 * n;
+    const s = 1 + 0.16 * n;
     pos.setXYZ(i, x * s, y * s, z * s);
   }
   geometry.computeVertexNormals();
@@ -208,15 +209,17 @@ export function createProps(
   if (rockAssets.length > 0) {
     for (const a of rockAssets) shapes.push(a);
   } else {
-    const mat = new THREE.MeshStandardMaterial({
-      color: map.atmosphere.rockColor,
-      roughness: 0.92,
-      flatShading: true,
-    });
-    disposables.push(mat);
+    // Three terracotta shades, one per shape, so neighbouring rocks read apart (D-058).
+    const base = new THREE.Color(map.atmosphere.rockColor);
+    const shades = [1, 0.88, 1.1];
     for (let v = 0; v < PROCEDURAL_ROCK_VARIANTS; v++) {
+      const mat = new THREE.MeshStandardMaterial({
+        color: base.clone().multiplyScalar(shades[v % shades.length] ?? 1),
+        roughness: 0.9,
+        flatShading: true,
+      });
       const geometry = proceduralRockGeometry(v);
-      disposables.push(geometry);
+      disposables.push(geometry, mat);
       shapes.push({ geometry, material: mat });
     }
   }
@@ -500,14 +503,15 @@ export function createProps(
   for (const [type, indices] of byType) {
     const asset = modelAssets.get(type);
     let geometry: THREE.BufferGeometry;
-    let material: THREE.Material;
+    let material: THREE.Material | THREE.Material[];
     if (asset) {
       geometry = asset.geometry;
       material = asset.material;
     } else {
       geometry = new THREE.BoxGeometry(2, 2, 2);
-      material = new THREE.MeshStandardMaterial({ color: 0x9c8a6a, roughness: 1 });
-      disposables.push(geometry, material);
+      const plain = new THREE.MeshStandardMaterial({ color: 0x9c8a6a, roughness: 1 });
+      material = plain;
+      disposables.push(geometry, plain);
     }
     const mesh = new THREE.InstancedMesh(geometry, material, indices.length);
     mesh.userData.pick = { kind: "model", indices } satisfies PropPick;

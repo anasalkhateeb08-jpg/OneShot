@@ -46,6 +46,13 @@ PCs and phones, the same picture for every player (no advantage from high settin
 reading of a distant enemy, and props from whole consistent kits instead of one asset at a
 time. Mixing photoreal and stylized assets is not allowed.
 
+## Neutral settings (D-056)
+Maps are generic and neutral: no religious buildings or symbols (no mosques, churches, temples,
+domes, minarets, crosses), no national flags, no writing in a real language, and nothing that
+points to one people, faith or culture. Military and desert props only: fortifications,
+sandbags, containers, towers, tents, vehicles, rocks, plants. Every kit piece is checked
+against this rule before it enters the game.
+
 ## Feel gate (pending owner approval, see DECISIONS.md D-002)
 At the end of phases 1, 2, 3, and 7 the owner answers one question:
 "Does this feel as tense and thrilling as the reference?"

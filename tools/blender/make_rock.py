@@ -18,6 +18,7 @@ import math
 import os
 import sys
 
+import bmesh
 import bpy
 from mathutils import Vector
 
@@ -158,23 +159,53 @@ size = Vector(
 )
 log(f"size: {size.x:.2f} x {size.y:.2f} x {size.z:.2f} (Blender axes, meters)")
 
+# Weld vertices that sit on the same spot. AI-made models (D-059) come split into loose
+# triangles along their texture seams; decimating that tears the shape into shards.
+bm = bmesh.new()
+bm.from_mesh(high.data)
+verts_before = len(bm.verts)
+bmesh.ops.remove_doubles(bm, verts=bm.verts, dist=max(size) * 1e-4)
+bm.to_mesh(high.data)
+bm.free()
+high.data.update()
+high_tris = tri_count(high)
+log(f"welded vertices: {verts_before} -> {len(high.data.vertices)}, {high_tris} triangles")
+PLANAR = os.environ.get("ONESHOT_PLANAR", "0") == "1"
+
 
 # --- 2. Lower-detail copies ------------------------------------------------------------------
-def make_lod(name, target):
-    obj = high.copy()
-    obj.data = high.data.copy()
-    obj.name = name
-    scene.collection.objects.link(obj)
+def apply_decimate(obj, setup):
     mod = obj.modifiers.new("decimate", "DECIMATE")
-    mod.decimate_type = "COLLAPSE"
-    mod.ratio = min(1.0, target / max(1, high_tris))
-    mod.use_collapse_triangulate = True
+    setup(mod)
     depsgraph = bpy.context.evaluated_depsgraph_get()
     evaluated = obj.evaluated_get(depsgraph)
     mesh = bpy.data.meshes.new_from_object(evaluated)
     obj.modifiers.remove(mod)
     obj.data = mesh
     mesh.calc_loop_triangles()
+
+
+def make_lod(name, target):
+    obj = high.copy()
+    obj.data = high.data.copy()
+    obj.name = name
+    scene.collection.objects.link(obj)
+    if PLANAR:
+        # Faceted (low-poly) models: first merge each flat facet into one face, then reduce.
+        def planar(mod):
+            mod.decimate_type = "DISSOLVE"
+            mod.angle_limit = math.radians(4.0)
+
+        apply_decimate(obj, planar)
+        log(f"{name}: {tri_count(obj)} triangles after merging flat facets")
+    count = tri_count(obj)
+
+    def collapse(mod):
+        mod.decimate_type = "COLLAPSE"
+        mod.ratio = min(1.0, target / max(1, count))
+        mod.use_collapse_triangulate = True
+
+    apply_decimate(obj, collapse)
     log(f"{name}: {tri_count(obj)} triangles")
     return obj
 
@@ -232,6 +263,19 @@ for node in final_mat.node_tree.nodes:
         img_node = node.inputs["Color"].links[0].from_node
         if img_node.type == "TEX_IMAGE":
             img_node.image = baked
+if normal_img_node is None:
+    # Source without a normal map (AI-generated models, D-059): wire the baked one in.
+    nt = final_mat.node_tree
+    bsdf = next((n for n in nt.nodes if n.type == "BSDF_PRINCIPLED"), None)
+    if bsdf is not None:
+        tex = nt.nodes.new("ShaderNodeTexImage")
+        tex.image = baked
+        nmap = nt.nodes.new("ShaderNodeNormalMap")
+        nt.links.new(tex.outputs["Color"], nmap.inputs["Color"])
+        nt.links.new(nmap.outputs["Normal"], bsdf.inputs["Normal"])
+        log("baked normal map added to the material")
+    else:
+        log("WARNING: no Principled BSDF, the baked normal map is not used")
 lod0.data.materials.clear()
 lod0.data.materials.append(final_mat)
 

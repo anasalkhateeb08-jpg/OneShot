@@ -8,7 +8,10 @@
 import { mirrorCrate, mirrorXZ } from "./maps";
 import type { CrateProp, RockProp, ShrubProp } from "./maps";
 import { modelType } from "./models";
-import type { ModelProp } from "./models";
+import type { ModelProp, ModelType } from "./models";
+
+/** Finds a model type by id (tests pass their own). */
+export type ModelLookup = (id: string) => ModelType | undefined;
 
 /** Fraction of a rock's height kept above the ground by default (the rest is buried). */
 export const ROCK_ABOVE_GROUND = 0.65;
@@ -102,8 +105,12 @@ export function shrubFromLayout(s: LayoutShrub, heightAt: HeightFn): ShrubProp {
 }
 
 /** World model from a layout entry (null for an unknown model type). */
-export function modelFromLayout(m: LayoutModel, heightAt: HeightFn): ModelProp | null {
-  const type = modelType(m.type);
+export function modelFromLayout(
+  m: LayoutModel,
+  heightAt: HeightFn,
+  lookup: ModelLookup = modelType,
+): ModelProp | null {
+  const type = lookup(m.type);
   if (!type) return null;
   const half = {
     x: (type.size.x * m.scale.x) / 2,
@@ -148,13 +155,17 @@ export interface LayoutProps {
  * All props of a map from its layout: the authored half first, then its mirror. The order is
  * fixed (index i and index i + half are a mirrored pair), which the editor relies on.
  */
-export function propsFromLayout(layout: MapLayout, heightAt: HeightFn): LayoutProps {
+export function propsFromLayout(
+  layout: MapLayout,
+  heightAt: HeightFn,
+  lookup: ModelLookup = modelType,
+): LayoutProps {
   const rocks = layout.rocks.map((r) => rockFromLayout(r, heightAt));
   const crates = layout.crates.map((c) => crateFromLayout(c, heightAt));
   const shrubs = layout.shrubs.map((s) => shrubFromLayout(s, heightAt));
   // An unknown model type (e.g. removed from MODEL_TYPES) produces no model on either side.
   const models = layout.models
-    .map((m) => modelFromLayout(m, heightAt))
+    .map((m) => modelFromLayout(m, heightAt, lookup))
     .filter((m): m is ModelProp => m !== null);
   return {
     rocks: [...rocks, ...rocks.map(mirrorRock)],
