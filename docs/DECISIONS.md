@@ -575,3 +575,28 @@ Reference values re-verified against the independent fine-step solver. Revert = 
   game, was put at the camera's own spot (x 0, z 205), so the camera sat inside it and the
   screen went black. Found from the saved layout, not guessed. It now goes where the
   screen's center looks; the piece already placed there is moved 8 m aside by the command.
+
+- **D-063 Editor fix: no scope overlay or stray arrows after a reload (open bug closed).**
+  After L and a click on a library model the game reloads with the editor already open. The
+  editor opened before the game's first frame, so `hud.update` never ran and the HUD stayed as
+  it was created: scope ring, zoom ladder and text visible. The whole HUD is now hidden every
+  frame while the editor is open (`Hud.setSuppressed`) and shown again when it closes. The move
+  arrows show only when something is selected (they were drawn alone in the middle of the
+  screen). Also: `client/vite.config.ts` used a `typeof import(...)` type, which ESLint
+  forbids; it is now a type-only import (erased at build, so the D-062 restart fix holds).
+- **D-064 Hover outline in the editor (owner request).** The prop under the mouse gets a red
+  box (gray for the mirrored half, which cannot be edited). It uses the same pick as the
+  click, so the red box is always exactly what a click selects; it hides over the arrows and
+  while moving the camera or a prop.
+- **D-065 T + drag is exact for every crate and model (owner feedback).** The brick copy used
+  only the turn around the vertical axis, so a crate's small lean or a model's tilt (rotX,
+  rotZ) left gaps and overlaps. The copy now follows the prop's own axes with its full turn,
+  exactly as the game draws it, and can go in six directions: up, down and the four sides.
+- **D-066 A click on a prop only selects it (owner feedback).** Any click started a ground
+  drag at once, measured from the clicked point on the prop's surface but moved on the ground
+  plane under it, so the prop jumped on the first small mouse move. A drag now starts after
+  5 px of travel, on a plane through the clicked point: no jump.
+- **D-067 Ray tests no longer depend on the hand-edited map.** Two tests in `raycast.test.ts`
+  expected the spawn cover rock 7 to 11 m ahead; the owner moved it in the editor, so the
+  tests (and GitHub CI) failed. They now place their own test rock 9 m ahead. All 164 tests
+  pass on the owner's PC.
